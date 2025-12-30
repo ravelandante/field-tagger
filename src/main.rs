@@ -122,13 +122,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     sink.stop();
     std::fs::remove_file(&*app.available_files[app.current_file_index])?;
-    app.current_file_index += 1;
-    Ok(if app.current_file_index >= app.available_files.len() {
+    app.available_files.remove(app.current_file_index);
+
+    if app.current_file_index >= app.available_files.len() {
         app.should_quit = true;
     } else {
         play_next_file(sink, app)?;
         app.input.clear();
-    })
+    }
+
+    Ok(())
 }
 
 fn get_wav_files_in_current_directory() -> Vec<String> {
