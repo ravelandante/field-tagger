@@ -114,7 +114,11 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         .block(Block::default().borders(Borders::ALL).title("Playback Progress"))
         .gauge_style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan))
         .ratio(app.progress.clamp(0.0, 1.0))
-        .label(format!("{}s / {}s", app.current_duration.as_secs(), app.total_duration.as_secs()));
+        .label(format!("{:02}:{:02} / {:02}:{:02}",
+            app.current_duration.as_secs() / 60,
+            app.current_duration.as_secs() % 60,
+            app.total_duration.as_secs() / 60,
+            app.total_duration.as_secs() % 60));
     f.render_widget(playback_bar, chunks[0]);
 
     // input
