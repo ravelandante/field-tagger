@@ -11,12 +11,14 @@ use ratatui::{
 };
 use rodio::{Decoder, OutputStream, Sink, Source};
 use std::{fs::File, io, io::BufReader, time::Duration};
+use walkdir::WalkDir;
 
 struct App {
     input: String,
     total_duration: Duration,
     current_duration: Duration,
     progress: f64,
+    current_file_index: usize,
     should_quit: bool,
 }
 
@@ -27,24 +29,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    let available_files = get_wav_files_in_current_directory();
+    if available_files.is_empty() {
+        clean_up_terminal(&mut terminal)?;
+        println!("No .wav files found in the current directory.");
+        return Ok(());
+    }
+
     let (_stream, stream_handle) = OutputStream::try_default()?;
     let sink = Sink::try_new(&stream_handle)?;
 
-    let file = File::open("../serenity.wav")?;
+    let file = File::open(&available_files[0])?;
 
     let source = Decoder::new(BufReader::new(file))?;
 
     let duration = source.total_duration().unwrap_or(Duration::from_secs(0));
 
-    sink.append(source);
     
     let mut app = App {
         input: String::new(),
         total_duration: duration,
         current_duration: Duration::from_secs(0),
         progress: 0.0,
+        current_file_index: 0,
         should_quit: false,
     };
+    
+    sink.append(source);
 
     loop {
         terminal.draw(|f| ui(f, &app))?;
@@ -86,7 +97,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if app.should_quit { break; }
     }
 
-    // clean up terminal
+    clean_up_terminal(&mut terminal)?;
+    Ok(())
+}
+
+fn get_wav_files_in_current_directory() -> Vec<String> {
+    WalkDir::new(".")
+        .into_iter()
+        .filter_map(|entry| {
+            entry.ok().and_then(|e| {
+                let path = e.path();
+                if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("wav") {
+                    path.to_str().map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+        })
+        .collect()
+}
+
+fn clean_up_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -94,7 +125,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
-
     Ok(())
 }
 
