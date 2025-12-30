@@ -1,3 +1,4 @@
+use app::App;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -13,14 +14,7 @@ use rodio::{Decoder, OutputStream, Sink, Source};
 use std::{fs::File, io, io::BufReader, time::Duration};
 use walkdir::WalkDir;
 
-struct App {
-    input: String,
-    total_duration: Duration,
-    current_duration: Duration,
-    progress: f64,
-    current_file_index: usize,
-    should_quit: bool,
-}
+mod app;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
@@ -45,14 +39,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let duration = source.total_duration().unwrap_or(Duration::from_secs(0));
 
-    
+    let metadata: Vec<app::FileMetadata> = available_files.iter().map(|file| app::FileMetadata {
+        file_name: file.clone(),
+        tags: Vec::new(),
+    }).collect();
+
     let mut app = App {
+        metadata,
         input: String::new(),
         total_duration: duration,
         current_duration: Duration::from_secs(0),
         progress: 0.0,
         current_file_index: 0,
         should_quit: false,
+        available_files,
     };
     
     sink.append(source);
@@ -67,11 +67,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match key.code {
                     KeyCode::Esc => app.should_quit = true,
                     KeyCode::Enter => {
+                        if !app.input.trim().is_empty() {
+                            app.metadata[app.current_file_index].tags.extend(
+                                app.input.split(',')
+                                    .map(|tag| tag.trim().to_string())
+                                    .filter(|tag| !tag.is_empty())
+                            );
+                        }
+
                         app.current_file_index += 1;
-                        if app.current_file_index >= available_files.len() {
+                        if app.current_file_index >= app.available_files.len() {
                             app.should_quit = true;
                         } else {
-                            play_next_file(&available_files, &sink, &mut app)?;
+                            play_next_file(&sink, &mut app)?;
                         }
                         app.input.clear();
                     }
@@ -82,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.input.pop();
                     }
                     KeyCode::Delete => {
-                        delete_file(&available_files, &sink, &mut app)?;
+                        delete_file(&sink, &mut app)?;
                     }
                     KeyCode::Right => {
                         sink.try_seek(Duration::from_millis((app.current_duration.as_millis() + 5000) as u64))?;
@@ -109,14 +117,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn delete_file(available_files: &Vec<String>, sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     sink.stop();
-    std::fs::remove_file(&*available_files[app.current_file_index])?;
+    std::fs::remove_file(&*app.available_files[app.current_file_index])?;
     app.current_file_index += 1;
-    Ok(if app.current_file_index >= available_files.len() {
+    Ok(if app.current_file_index >= app.available_files.len() {
         app.should_quit = true;
     } else {
-        play_next_file(available_files, sink, app)?;
+        play_next_file(sink, app)?;
         app.input.clear();
     })
 }
@@ -137,9 +145,9 @@ fn get_wav_files_in_current_directory() -> Vec<String> {
         .collect()
 }
 
-fn play_next_file(available_files: &Vec<String>, sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+fn play_next_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     sink.stop();
-    let next_file = File::open(&*available_files[app.current_file_index])?;
+    let next_file = File::open(&*app.available_files[app.current_file_index])?;
     let next_source = Decoder::new(BufReader::new(next_file))?;
     app.total_duration = next_source.total_duration().unwrap_or(Duration::from_secs(0));
     sink.append(next_source);
