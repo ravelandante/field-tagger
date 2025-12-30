@@ -13,6 +13,7 @@ use ratatui::{
 use rodio::{Decoder, OutputStream, Sink, Source};
 use std::{fs::File, io, io::BufReader, time::Duration};
 use walkdir::WalkDir;
+use std::process::Command;
 
 mod app;
 
@@ -77,6 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         app.current_file_index += 1;
                         if app.current_file_index >= app.available_files.len() {
+                            convert_all_to_flac(&app)?;
                             app.should_quit = true;
                         } else {
                             play_next_file(&sink, &mut app)?;
@@ -162,6 +164,33 @@ fn clean_up_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> i
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
+    Ok(())
+}
+
+fn convert_to_flac(input: &str, output: &str) -> anyhow::Result<()> {
+    let status = Command::new("ffmpeg")
+        .args([
+            "-i", input,
+            "-compression_level", "8",
+            "-y",
+            output,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("FFmpeg conversion failed"))
+    }
+}
+
+fn convert_all_to_flac(app: &App) -> anyhow::Result<()> {
+    for file in &app.available_files {
+        let output = format!("{}.flac", file.trim_end_matches(".wav"));
+        convert_to_flac(file, &output)?;
+    }
     Ok(())
 }
 
