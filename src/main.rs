@@ -67,7 +67,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match key.code {
                     KeyCode::Esc => app.should_quit = true,
                     KeyCode::Enter => {
-                        // save tags and go to next file
+                        app.current_file_index += 1;
+                        if app.current_file_index >= available_files.len() {
+                            app.should_quit = true;
+                        } else {
+                            play_next_file(&available_files, &sink, &mut app)?;
+                        }
                         app.input.clear();
                     }
                     KeyCode::Char(c) => {
@@ -115,6 +120,15 @@ fn get_wav_files_in_current_directory() -> Vec<String> {
             })
         })
         .collect()
+}
+
+fn play_next_file(available_files: &Vec<String>, sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    sink.stop();
+    let next_file = File::open(&*available_files[app.current_file_index])?;
+    let next_source = Decoder::new(BufReader::new(next_file))?;
+    app.total_duration = next_source.total_duration().unwrap_or(Duration::from_secs(0));
+    sink.append(next_source);
+    Ok(())
 }
 
 fn clean_up_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
