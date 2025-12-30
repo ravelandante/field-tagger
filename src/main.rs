@@ -81,6 +81,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     KeyCode::Backspace => {
                         app.input.pop();
                     }
+                    KeyCode::Delete => {
+                        delete_file(&available_files, &sink, &mut app)?;
+                    }
                     KeyCode::Right => {
                         sink.try_seek(Duration::from_millis((app.current_duration.as_millis() + 5000) as u64))?;
                     }
@@ -104,6 +107,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     clean_up_terminal(&mut terminal)?;
     Ok(())
+}
+
+fn delete_file(available_files: &Vec<String>, sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    sink.stop();
+    std::fs::remove_file(&*available_files[app.current_file_index])?;
+    app.current_file_index += 1;
+    Ok(if app.current_file_index >= available_files.len() {
+        app.should_quit = true;
+    } else {
+        play_next_file(available_files, sink, app)?;
+        app.input.clear();
+    })
 }
 
 fn get_wav_files_in_current_directory() -> Vec<String> {
@@ -171,6 +186,7 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
     f.render_widget(input_panel, chunks[1]);
 
     // instructions + info
-    let help_text = Paragraph::new("ESC: Quit | Enter: Save & Next | Arrows: Seek");
+    let help_text = Paragraph::new("ESC: Quit | Enter: Save & Next | Arrows: Seek | Del: Delete File")
+        .block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(help_text, chunks[2]);
 }
