@@ -1,0 +1,20 @@
+[package]
+name = "field-tagger"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# UI and Terminal handling
+ratatui = "0.26"
+crossterm = { version = "0.27", features = ["event-stream"] }
+
+# Audio Playback
+rodio = "0.19"
+
+# Metadata (WAV/FLAC tagging)
+lofty = "0.18"
+
+# Utilities
+walkdir = "2.4"      # To easily recurse through audio folders
+anyhow = "1.0"       # For easy error handling
+chrono = "0.4"       # For handling dates/times
