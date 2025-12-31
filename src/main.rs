@@ -72,9 +72,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match key.code {
                     KeyCode::Esc => app.should_quit = true,
                     KeyCode::Enter => {
-                        if app.input.trim().is_empty() {
-                            continue;
-                        }
                         handle_enter_key(&sink, &mut app)?;
                     }
                     KeyCode::Char(c) => {
@@ -129,7 +126,7 @@ fn handle_enter_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error
             if app.current_file_index >= app.available_files.len() {
                 sink.stop();
                 app.state = app::AppState::Processing;
-                convert_all_to_flac(&*app)?;
+                convert_all_to_flac(&app)?;
                 write_metadata_to_file(
                     &*format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
                     &app.metadata[app.current_file_index - 1]
@@ -230,7 +227,9 @@ fn write_metadata_to_file(path: &str, metadata: &app::FileMetadata) -> Result<()
 
     let mut tag = VorbisComments::default();
     
-    tag.insert(String::from("TAGS"), metadata.tags.join(", "));
+    if !metadata.tags.is_empty() {
+        tag.insert(String::from("TAGS"), metadata.tags.join(", "));
+    }
     if let Some(location) = &metadata.location {
         tag.insert(String::from("LOCATION"), location.to_string());
     }

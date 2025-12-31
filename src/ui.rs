@@ -14,7 +14,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
             Constraint::Length(3), // input
             Constraint::Min(0),    // instructions + info
         ])
-        .split(f.size());
+        .split(f.area());
 
     // progress bar
     let playback_bar = Gauge::default()
