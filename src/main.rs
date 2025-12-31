@@ -12,6 +12,8 @@ use rodio::{Decoder, OutputStream, Sink, Source};
 use std::{fs::File, io, io::BufReader, time::Duration};
 use walkdir::WalkDir;
 use std::process::Command;
+use lofty::{config::{ParseOptions, WriteOptions}, ogg::VorbisComments, prelude::*};
+use lofty::flac::FlacFile;
 
 mod app;
 mod ui;
@@ -41,8 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let duration = source.total_duration().unwrap_or(Duration::from_secs(0));
 
-    let metadata: Vec<app::FileMetadata> = available_files.iter().map(|file| app::FileMetadata {
-        file_name: file.clone(),
+    let metadata: Vec<app::FileMetadata> = available_files.iter().map(|_| app::FileMetadata {
         tags: Vec::new(),
     }).collect();
 
@@ -80,6 +81,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.current_file_index += 1;
                         if app.current_file_index >= app.available_files.len() {
                             convert_all_to_flac(&app)?;
+                            write_custom_tag(
+                                &format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
+                                "TAGS",
+                                &app.metadata[app.current_file_index - 1].tags.join(", ")
+                            )?;
                             app.should_quit = true;
                         } else {
                             play_next_file(&sink, &mut app)?;
@@ -195,5 +201,20 @@ fn convert_all_to_flac(app: &App) -> anyhow::Result<()> {
         let output = format!("{}.flac", file.trim_end_matches(".wav"));
         convert_to_flac(file, &output)?;
     }
+    Ok(())
+}
+
+fn write_custom_tag(path: &str, key: &str, value: &str) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let mut file = File::open(path)?;
+
+    let mut flac_file = FlacFile::read_from(&mut file, ParseOptions::new())?;
+
+    let mut tag = VorbisComments::default();
+    tag.insert(String::from(key), value.to_string());
+
+    flac_file.set_vorbis_comments(tag);
+
+    flac_file.save_to_path(path, WriteOptions::default())?;
+
     Ok(())
 }

@@ -11,7 +11,7 @@ pub struct App {
     pub metadata: Vec<FileMetadata>,
 }
 
+#[derive(Clone)]
 pub struct FileMetadata {
-    pub file_name: String,
     pub tags: Vec<String>,
 }

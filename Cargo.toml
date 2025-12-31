@@ -12,7 +12,7 @@ crossterm = { version = "0.27", features = ["event-stream"] }
 rodio = "0.19"
 
 # Metadata (WAV/FLAC tagging)
-lofty = "0.18"
+lofty = "0.22.4"
 
 # Utilities
 walkdir = "2.4"      # To easily recurse through audio folders
