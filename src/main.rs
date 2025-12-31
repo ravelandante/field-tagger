@@ -75,37 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if app.input.trim().is_empty() {
                             continue;
                         }
-                        match app.state {
-                            app::AppState::AskingForLocation => {
-                                app.state = app::AppState::AskingForTags;
-                                app.metadata[app.current_file_index].location = Some(app.input.trim().to_string());
-                                app.input.clear();
-                            }
-                            app::AppState::AskingForTags => {
-                                app.metadata[app.current_file_index].tags.extend(
-                                    app.input.split(',')
-                                    .map(|tag| tag.trim().to_string())
-                                    .filter(|tag| !tag.is_empty())
-                                );
-                                
-                                app.current_file_index += 1;
-                                if app.current_file_index >= app.available_files.len() {
-                                    sink.stop();
-                                    app.state = app::AppState::Processing;
-                                    convert_all_to_flac(&app)?;
-                                    write_metadata_to_file(
-                                        &format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
-                                        &app.metadata[app.current_file_index - 1]
-                                    )?;
-                                    app.should_quit = true;
-                                } else {
-                                    play_next_file(&sink, &mut app)?;
-                                    app.state = app::AppState::AskingForLocation;
-                                }
-                                app.input.clear();
-                            }
-                            _ => {}
-                        }
+                        handle_enter_key(&sink, &mut app)?;
                     }
                     KeyCode::Char(c) => {
                         app.input.push(c);
@@ -139,6 +109,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     clean_up_terminal(&mut terminal)?;
     Ok(())
+}
+
+fn handle_enter_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    Ok(match app.state {
+        app::AppState::AskingForLocation => {
+            app.state = app::AppState::AskingForTags;
+            app.metadata[app.current_file_index].location = Some(app.input.trim().to_string());
+            app.input.clear();
+        }
+        app::AppState::AskingForTags => {
+            app.metadata[app.current_file_index].tags.extend(
+                app.input.split(',')
+                .map(|tag| tag.trim().to_string())
+                .filter(|tag| !tag.is_empty())
+            );
+        
+            app.current_file_index += 1;
+            if app.current_file_index >= app.available_files.len() {
+                sink.stop();
+                app.state = app::AppState::Processing;
+                convert_all_to_flac(&*app)?;
+                write_metadata_to_file(
+                    &*format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
+                    &app.metadata[app.current_file_index - 1]
+                )?;
+                app.should_quit = true;
+            } else {
+                play_next_file(sink, app)?;
+                app.state = app::AppState::AskingForLocation;
+            }
+            app.input.clear();
+        }
+        _ => {}
+    })
 }
 
 fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
