@@ -120,6 +120,10 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
             app.input.clear();
         }
         app::AppState::AskingForTags => {
+            app.state = app::AppState::Processing;
+            // conversion below blocks update, so update state + ui explicitly before blocking work
+            terminal.draw(|f| ui(f, app))?;
+            
             app.metadata[app.current_file_index].tags.extend(
                 app.input.split(',')
                 .map(|tag| tag.trim().to_string())
@@ -129,9 +133,6 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
             app.current_file_index += 1;
             if app.current_file_index >= app.available_files.len() {
                 sink.stop();
-                app.state = app::AppState::Processing;
-                // conversion below blocks update, so update state + ui explicitly before blocking work
-                terminal.draw(|f| ui(f, app))?;
 
                 convert_all_to_flac(&app)?;
                 write_metadata_to_file(
