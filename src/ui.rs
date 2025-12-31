@@ -6,6 +6,12 @@ use ratatui::{
 };
 
 pub fn ui(f: &mut Frame<>, app: &App) {
+    if let AppState::Processing = app.state {
+        let processing_message = Paragraph::new("Processing... Please wait");
+        f.render_widget(processing_message, f.area());
+        return;
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)

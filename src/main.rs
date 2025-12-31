@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match key.code {
                     KeyCode::Esc => app.should_quit = true,
                     KeyCode::Enter => {
-                        handle_enter_key(&sink, &mut app)?;
+                        handle_enter_key(&sink, &mut app, &mut terminal)?;
                     }
                     KeyCode::Char(c) => {
                         app.input.push(c);
@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn handle_enter_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), Box<dyn std::error::Error + 'static>> {
     Ok(match app.state {
         app::AppState::AskingForLocation => {
             app.state = app::AppState::AskingForTags;
@@ -126,6 +126,9 @@ fn handle_enter_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error
             if app.current_file_index >= app.available_files.len() {
                 sink.stop();
                 app.state = app::AppState::Processing;
+                // conversion below blocks update, so update state + ui explicitly before blocking work
+                terminal.draw(|f| ui(f, app))?;
+
                 convert_all_to_flac(&app)?;
                 write_metadata_to_file(
                     &*format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
