@@ -19,12 +19,18 @@ pub fn ui(f: &mut Frame<>, app: &App) {
         .direction(Direction::Vertical)
         .margin(2)
         .constraints([
+            Constraint::Length(2),  // file info
             Constraint::Length(3),  // progress bar
             Constraint::Length(12), // waveform
             Constraint::Length(3),  // input
-            Constraint::Min(0),     // instructions + info
+            Constraint::Min(3),     // instructions
         ])
         .split(f.area());
+
+    // file info
+    let file_info = Paragraph::new(app.available_files[app.current_file_index].as_str())
+        .style(Style::default().add_modifier(Modifier::BOLD));
+    f.render_widget(file_info, chunks[0]);
 
     // progress bar
     let playback_bar = Gauge::default()
@@ -36,8 +42,10 @@ pub fn ui(f: &mut Frame<>, app: &App) {
             app.current_duration.as_secs() % 60,
             app.total_duration.as_secs() / 60,
             app.total_duration.as_secs() % 60));
-    f.render_widget(playback_bar, chunks[0]);
+    f.render_widget(playback_bar, chunks[1]);
 
+
+    // waveform
     let progress_point = (app.progress * app.waveform_data.len() as f64) as usize;
     
     let played_data: Vec<(f64, f64)> = app.waveform_data
@@ -93,7 +101,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
                 .bounds([0.0, max_val * 1.1])
         );
     
-    f.render_widget(waveform_chart, chunks[1]);
+    f.render_widget(waveform_chart, chunks[2]);
 
     // input
     let input_title = match app.state {
@@ -104,10 +112,10 @@ pub fn ui(f: &mut Frame<>, app: &App) {
 
     let input_panel = Paragraph::new(app.input.as_str())
         .block(Block::default().borders(Borders::ALL).title(input_title));
-    f.render_widget(input_panel, chunks[2]);
+    f.render_widget(input_panel, chunks[3]);
 
-    // instructions + info
+    // instructions
     let help_text = Paragraph::new("ESC: Quit | Enter: Save & Next | Arrows: Seek | Del: Delete File")
         .block(Block::default().borders(Borders::ALL).title("Controls"));
-    f.render_widget(help_text, chunks[3]);
+    f.render_widget(help_text, chunks[4]);
 }
