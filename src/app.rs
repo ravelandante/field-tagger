@@ -9,9 +9,17 @@ pub struct App {
     pub should_quit: bool,
     pub available_files: Vec<String>,
     pub metadata: Vec<FileMetadata>,
+    pub state: AppState,
 }
 
 #[derive(Clone)]
 pub struct FileMetadata {
     pub tags: Vec<String>,
+    pub location: Option<String>,
+}
+
+pub enum AppState {
+    AskingForTags,
+    AskingForLocation,
+    Processing,
 }

@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, AppState};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, Gauge, Paragraph},
@@ -29,8 +29,14 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     f.render_widget(playback_bar, chunks[0]);
 
     // input
+    let input_title = match app.state {
+        AppState::AskingForTags => "Enter Tags",
+        AppState::AskingForLocation => "Enter Location",
+        _ => "",
+    };
+
     let input_panel = Paragraph::new(app.input.as_str())
-        .block(Block::default().borders(Borders::ALL).title("Enter Tags / Location"));
+        .block(Block::default().borders(Borders::ALL).title(input_title));
     f.render_widget(input_panel, chunks[1]);
 
     // instructions + info

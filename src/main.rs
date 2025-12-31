@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let metadata: Vec<app::FileMetadata> = available_files.iter().map(|_| app::FileMetadata {
         tags: Vec::new(),
+        location: None,
     }).collect();
 
     let mut app = App {
@@ -56,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         current_file_index: 0,
         should_quit: false,
         available_files,
+        state: app::AppState::AskingForLocation,
     };
     
     sink.append(source);
@@ -70,27 +72,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match key.code {
                     KeyCode::Esc => app.should_quit = true,
                     KeyCode::Enter => {
-                        if !app.input.trim().is_empty() {
-                            app.metadata[app.current_file_index].tags.extend(
-                                app.input.split(',')
+                        if app.input.trim().is_empty() {
+                            continue;
+                        }
+                        match app.state {
+                            app::AppState::AskingForLocation => {
+                                app.state = app::AppState::AskingForTags;
+                                app.metadata[app.current_file_index].location = Some(app.input.trim().to_string());
+                                app.input.clear();
+                            }
+                            app::AppState::AskingForTags => {
+                                app.metadata[app.current_file_index].tags.extend(
+                                    app.input.split(',')
                                     .map(|tag| tag.trim().to_string())
                                     .filter(|tag| !tag.is_empty())
-                            );
+                                );
+                                
+                                app.current_file_index += 1;
+                                if app.current_file_index >= app.available_files.len() {
+                                    sink.stop();
+                                    app.state = app::AppState::Processing;
+                                    convert_all_to_flac(&app)?;
+                                    write_metadata_to_file(
+                                        &format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
+                                        &app.metadata[app.current_file_index - 1]
+                                    )?;
+                                    app.should_quit = true;
+                                } else {
+                                    play_next_file(&sink, &mut app)?;
+                                    app.state = app::AppState::AskingForLocation;
+                                }
+                                app.input.clear();
+                            }
+                            _ => {}
                         }
-
-                        app.current_file_index += 1;
-                        if app.current_file_index >= app.available_files.len() {
-                            convert_all_to_flac(&app)?;
-                            write_custom_tag(
-                                &format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
-                                "TAGS",
-                                &app.metadata[app.current_file_index - 1].tags.join(", ")
-                            )?;
-                            app.should_quit = true;
-                        } else {
-                            play_next_file(&sink, &mut app)?;
-                        }
-                        app.input.clear();
                     }
                     KeyCode::Char(c) => {
                         app.input.push(c);
@@ -204,13 +219,17 @@ fn convert_all_to_flac(app: &App) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn write_custom_tag(path: &str, key: &str, value: &str) -> Result<(), Box<dyn std::error::Error + 'static>> {
+fn write_metadata_to_file(path: &str, metadata: &app::FileMetadata) -> Result<(), Box<dyn std::error::Error + 'static>> {
     let mut file = File::open(path)?;
 
     let mut flac_file = FlacFile::read_from(&mut file, ParseOptions::new())?;
 
     let mut tag = VorbisComments::default();
-    tag.insert(String::from(key), value.to_string());
+    
+    tag.insert(String::from("TAGS"), metadata.tags.join(", "));
+    if let Some(location) = &metadata.location {
+        tag.insert(String::from("LOCATION"), location.to_string());
+    }
 
     flac_file.set_vorbis_comments(tag);
 
