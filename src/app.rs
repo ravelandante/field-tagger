@@ -10,6 +10,7 @@ pub struct App {
     pub available_files: Vec<String>,
     pub metadata: Vec<FileMetadata>,
     pub state: AppState,
+    pub waveform_data: Vec<u64>,
 }
 
 #[derive(Clone)]

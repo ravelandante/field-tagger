@@ -14,6 +14,7 @@ use walkdir::WalkDir;
 use std::process::Command;
 use lofty::{config::{ParseOptions, WriteOptions}, ogg::VorbisComments, prelude::*};
 use lofty::flac::FlacFile;
+use hound::WavReader;
 
 mod app;
 mod ui;
@@ -43,6 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let duration = source.total_duration().unwrap_or(Duration::from_secs(0));
 
+    let waveform_data = extract_waveform(&available_files[0], 200)?;
+
     let metadata: Vec<app::FileMetadata> = available_files.iter().map(|_| app::FileMetadata {
         tags: Vec::new(),
         location: None,
@@ -58,6 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         should_quit: false,
         available_files,
         state: app::AppState::AskingForLocation,
+        waveform_data,
     };
     
     sink.append(source);
@@ -181,6 +185,7 @@ fn play_next_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::
     let next_file = File::open(&*app.available_files[app.current_file_index])?;
     let next_source = Decoder::new(BufReader::new(next_file))?;
     app.total_duration = next_source.total_duration().unwrap_or(Duration::from_secs(0));
+    app.waveform_data = extract_waveform(&app.available_files[app.current_file_index], 200)?;
     sink.append(next_source);
     Ok(())
 }
@@ -242,4 +247,37 @@ fn write_metadata_to_file(path: &str, metadata: &app::FileMetadata) -> Result<()
     flac_file.save_to_path(path, WriteOptions::default())?;
 
     Ok(())
+}
+
+fn extract_waveform(file_path: &str, num_points: usize) -> Result<Vec<u64>, Box<dyn std::error::Error + 'static>> {
+    let mut reader = WavReader::open(file_path)?;
+    let samples: Vec<i16> = reader.samples::<i16>().filter_map(Result::ok).collect();
+    
+    if samples.is_empty() {
+        return Ok(vec![0; num_points]);
+    }
+    
+    let samples_per_point = samples.len() / num_points;
+    let mut waveform = Vec::with_capacity(num_points);
+    
+    for i in 0..num_points {
+        let start = i * samples_per_point;
+        let end = ((i + 1) * samples_per_point).min(samples.len());
+        
+        if start >= samples.len() {
+            waveform.push(0);
+            continue;
+        }
+        
+        // Calculate RMS (root mean square) for this chunk
+        let chunk = &samples[start..end];
+        let sum_squares: f64 = chunk.iter().map(|&s| (s as f64).powi(2)).sum();
+        let rms = (sum_squares / chunk.len() as f64).sqrt();
+        
+        // Normalize to 0-100 range for display
+        let normalized = (rms / i16::MAX as f64 * 100.0) as u64;
+        waveform.push(normalized);
+    }
+    
+    Ok(waveform)
 }

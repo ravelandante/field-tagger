@@ -567,6 +567,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "crossterm 0.27.0",
+ "hound",
  "lofty",
  "ratatui",
  "rodio",
