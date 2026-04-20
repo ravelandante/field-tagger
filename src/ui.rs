@@ -66,6 +66,14 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     let max_val = app.waveform_data.iter().max().copied().unwrap_or(1) as f64;
     let data_len = app.waveform_data.len() as f64;
     let file_metadata = &app.metadata[app.current_file_index];
+    let playback_marker_data = if app.total_duration.is_zero() {
+        None
+    } else {
+        Some(vec![
+            (app.progress.clamp(0.0, 1.0) * data_len, 0.0),
+            (app.progress.clamp(0.0, 1.0) * data_len, max_val * 1.1),
+        ])
+    };
     let from_marker_data = trim_time_to_waveform_x(file_metadata.trim_from, app.total_duration, data_len)
         .map(|x| vec![(x, 0.0), (x, max_val * 1.1)]);
     let to_marker_data = trim_time_to_waveform_x(file_metadata.trim_to, app.total_duration, data_len)
@@ -90,6 +98,16 @@ pub fn ui(f: &mut Frame<>, app: &App) {
                 .graph_type(GraphType::Line)
                 .style(Style::default().fg(Color::Gray))
                 .data(&unplayed_data)
+        );
+    }
+
+    if let Some(playback_marker) = &playback_marker_data {
+        datasets.push(
+            Dataset::default()
+                .marker(symbols::Marker::Braille)
+                .graph_type(GraphType::Line)
+                .style(Style::default().fg(Color::Green))
+                .data(playback_marker),
         );
     }
 
