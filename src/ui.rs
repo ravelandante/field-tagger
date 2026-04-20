@@ -65,6 +65,11 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     
     let max_val = app.waveform_data.iter().max().copied().unwrap_or(1) as f64;
     let data_len = app.waveform_data.len() as f64;
+    let file_metadata = &app.metadata[app.current_file_index];
+    let from_marker_data = trim_time_to_waveform_x(file_metadata.trim_from, app.total_duration, data_len)
+        .map(|x| vec![(x, 0.0), (x, max_val * 1.1)]);
+    let to_marker_data = trim_time_to_waveform_x(file_metadata.trim_to, app.total_duration, data_len)
+        .map(|x| vec![(x, 0.0), (x, max_val * 1.1)]);
     
     let mut datasets = vec![];
     
@@ -87,6 +92,26 @@ pub fn ui(f: &mut Frame<>, app: &App) {
                 .data(&unplayed_data)
         );
     }
+
+    if let Some(from_marker) = &from_marker_data {
+        datasets.push(
+            Dataset::default()
+                .marker(symbols::Marker::Braille)
+                .graph_type(GraphType::Line)
+                .style(Style::default().fg(Color::Yellow))
+                .data(from_marker),
+        );
+    }
+
+    if let Some(to_marker) = &to_marker_data {
+        datasets.push(
+            Dataset::default()
+                .marker(symbols::Marker::Braille)
+                .graph_type(GraphType::Line)
+                .style(Style::default().fg(Color::Magenta))
+                .data(to_marker),
+        );
+    }
     
     let waveform_chart = Chart::new(datasets)
         .block(Block::default().borders(Borders::ALL).title(Span::styled(
@@ -105,7 +130,6 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     f.render_widget(waveform_chart, chunks[2]);
 
     if app.interaction_mode == InteractionMode::Trim {
-        let file_metadata = &app.metadata[app.current_file_index];
         let active_side = match app.active_trim_side {
             TrimSide::From => "From",
             TrimSide::To => "To",
@@ -156,4 +180,18 @@ fn format_duration(duration: Option<std::time::Duration>) -> String {
         ),
         None => "--:--.---".to_string(),
     }
+}
+
+fn trim_time_to_waveform_x(
+    marker: Option<std::time::Duration>,
+    total_duration: std::time::Duration,
+    data_len: f64,
+) -> Option<f64> {
+    let marker = marker?;
+    if total_duration.is_zero() {
+        return None;
+    }
+
+    let ratio = (marker.as_secs_f64() / total_duration.as_secs_f64()).clamp(0.0, 1.0);
+    Some(ratio * data_len)
 }
