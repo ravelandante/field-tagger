@@ -141,6 +141,10 @@ fn handle_key_event(
             };
             app.trim_warning = None;
         }
+        KeyCode::Backspace if app.interaction_mode == InteractionMode::Trim => {
+            reset_seek_acceleration(app);
+            clear_active_trim_marker(app);
+        }
         KeyCode::Backspace if app.interaction_mode == InteractionMode::Normal => {
             reset_seek_acceleration(app);
             app.input.pop();
@@ -297,6 +301,16 @@ fn set_active_trim_marker(app: &mut App) -> Result<(), Box<dyn std::error::Error
     }
 
     Ok(())
+}
+
+fn clear_active_trim_marker(app: &mut App) {
+    let metadata = &mut app.metadata[app.current_file_index];
+    app.trim_warning = None;
+
+    match app.active_trim_side {
+        TrimSide::From => metadata.trim_from = None,
+        TrimSide::To => metadata.trim_to = None,
+    }
 }
 
 fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
