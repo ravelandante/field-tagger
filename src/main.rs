@@ -1,6 +1,6 @@
-use app::App;
+use app::{App, InteractionMode, TrimSide};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -46,10 +46,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let waveform_data = extract_waveform(&available_files[0], 200)?;
 
-    let metadata: Vec<app::FileMetadata> = available_files.iter().map(|_| app::FileMetadata {
-        tags: Vec::new(),
-        location: None,
-    }).collect();
+    let metadata: Vec<app::FileMetadata> = available_files
+        .iter()
+        .map(|_| app::FileMetadata {
+            tags: Vec::new(),
+            location: None,
+            trim_from: None,
+            trim_to: None,
+        })
+        .collect();
 
     let mut app = App {
         metadata,
@@ -62,6 +67,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         available_files,
         state: app::AppState::AskingForLocation,
         waveform_data,
+        interaction_mode: InteractionMode::Normal,
+        active_trim_side: TrimSide::From,
+        trim_warning: None,
+        is_paused: false,
     };
     
     sink.append(source);
@@ -73,29 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Esc => app.should_quit = true,
-                    KeyCode::Enter => {
-                        handle_enter_key(&sink, &mut app, &mut terminal)?;
-                    }
-                    KeyCode::Char(c) => {
-                        app.input.push(c);
-                    }
-                    KeyCode::Backspace => {
-                        app.input.pop();
-                    }
-                    KeyCode::Delete => {
-                        delete_file(&sink, &mut app)?;
-                    }
-                    KeyCode::Right => {
-                        sink.try_seek(Duration::from_millis((app.current_duration.as_millis() + 5000) as u64))?;
-                    }
-                    KeyCode::Left => {
-                        let seeked_position = if app.current_duration.as_millis() < 5000 { 0 } else { app.current_duration.as_millis() - 5000 };
-                        sink.try_seek(Duration::from_millis(seeked_position as u64))?;
-                    }
-                    _ => {}
-                }
+                handle_key_event(key, &sink, &mut app, &mut terminal)?;
             }
         }
 
@@ -112,7 +99,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn handle_key_event(
+    key: KeyEvent,
+    sink: &Sink,
+    app: &mut App,
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    if matches!(key.code, KeyCode::F(6)) {
+        toggle_interaction_mode(sink, app);
+        return Ok(());
+    }
+
+    match key.code {
+        KeyCode::Esc => app.should_quit = true,
+        KeyCode::Enter => handle_enter_key(sink, app, terminal)?,
+        KeyCode::Delete => delete_file(sink, app)?,
+        KeyCode::Right => seek_by(sink, app, 5_000)?,
+        KeyCode::Left => seek_by(sink, app, -5_000)?,
+        KeyCode::Char(' ') if app.interaction_mode == InteractionMode::Trim => toggle_pause(sink, app),
+        KeyCode::Char('t') | KeyCode::Char('T') if app.interaction_mode == InteractionMode::Trim => {
+            app.active_trim_side = match app.active_trim_side {
+                TrimSide::From => TrimSide::To,
+                TrimSide::To => TrimSide::From,
+            };
+            app.trim_warning = None;
+        }
+        KeyCode::Backspace if app.interaction_mode == InteractionMode::Normal => {
+            app.input.pop();
+        }
+        KeyCode::Char(c) if app.interaction_mode == InteractionMode::Normal => {
+            app.input.push(c);
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn toggle_interaction_mode(sink: &Sink, app: &mut App) {
+    app.trim_warning = None;
+    match app.interaction_mode {
+        InteractionMode::Normal => {
+            app.interaction_mode = InteractionMode::Trim;
+            app.active_trim_side = TrimSide::From;
+        }
+        InteractionMode::Trim => {
+            app.interaction_mode = InteractionMode::Normal;
+            if app.is_paused {
+                sink.play();
+                app.is_paused = false;
+            }
+        }
+    }
+}
+
+fn toggle_pause(sink: &Sink, app: &mut App) {
+    if app.is_paused {
+        sink.play();
+        app.is_paused = false;
+    } else {
+        sink.pause();
+        app.is_paused = true;
+    }
+}
+
+fn seek_by(
+    sink: &Sink,
+    app: &App,
+    delta_ms: i64,
+) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let current_ms = app.current_duration.as_millis() as i64;
+    let target_ms = (current_ms + delta_ms).clamp(0, app.total_duration.as_millis() as i64) as u64;
+    sink.try_seek(Duration::from_millis(target_ms))?;
+    Ok(())
+}
+
 fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    if app.interaction_mode == InteractionMode::Trim {
+        return set_active_trim_marker(app);
+    }
+
     Ok(match app.state {
         app::AppState::AskingForLocation => {
             app.state = app::AppState::AskingForTags;
@@ -135,10 +201,7 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
                 sink.stop();
 
                 convert_all_to_flac(&app)?;
-                write_metadata_to_file(
-                    &*format!("{}.flac", app.available_files[app.current_file_index - 1].trim_end_matches(".wav")),
-                    &app.metadata[app.current_file_index - 1]
-                )?;
+                write_all_metadata(app)?;
                 app.should_quit = true;
             } else {
                 play_next_file(sink, app)?;
@@ -150,10 +213,40 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
     })
 }
 
+fn set_active_trim_marker(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let current = app.current_duration.min(app.total_duration);
+    let metadata = &mut app.metadata[app.current_file_index];
+    app.trim_warning = None;
+
+    match app.active_trim_side {
+        TrimSide::From => {
+            if let Some(to) = metadata.trim_to {
+                if current > to {
+                    app.trim_warning = Some("From cannot be greater than To".to_string());
+                    return Ok(());
+                }
+            }
+            metadata.trim_from = Some(current);
+        }
+        TrimSide::To => {
+            if let Some(from) = metadata.trim_from {
+                if current < from {
+                    app.trim_warning = Some("To cannot be less than From".to_string());
+                    return Ok(());
+                }
+            }
+            metadata.trim_to = Some(current);
+        }
+    }
+
+    Ok(())
+}
+
 fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     sink.stop();
     std::fs::remove_file(&*app.available_files[app.current_file_index])?;
     app.available_files.remove(app.current_file_index);
+    app.metadata.remove(app.current_file_index);
 
     if app.current_file_index >= app.available_files.len() {
         app.should_quit = true;
@@ -187,6 +280,11 @@ fn play_next_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::
     let next_source = Decoder::new(BufReader::new(next_file))?;
     app.total_duration = next_source.total_duration().unwrap_or(Duration::from_secs(0));
     app.waveform_data = extract_waveform(&app.available_files[app.current_file_index], 200)?;
+    app.current_duration = Duration::from_secs(0);
+    app.interaction_mode = InteractionMode::Normal;
+    app.active_trim_side = TrimSide::From;
+    app.trim_warning = None;
+    app.is_paused = false;
     sink.append(next_source);
     Ok(())
 }
@@ -202,14 +300,27 @@ fn clean_up_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> i
     Ok(())
 }
 
-fn convert_to_flac(input: &str, output: &str) -> anyhow::Result<()> {
+fn convert_to_flac(input: &str, output: &str, trim_from: Option<Duration>, trim_to: Option<Duration>) -> anyhow::Result<()> {
+    let mut args: Vec<String> = Vec::new();
+    if let Some(from) = trim_from {
+        args.push("-ss".to_string());
+        args.push(format_duration_for_ffmpeg(from));
+    }
+    if let Some(to) = trim_to {
+        args.push("-to".to_string());
+        args.push(format_duration_for_ffmpeg(to));
+    }
+    args.extend([
+        "-i".to_string(),
+        input.to_string(),
+        "-compression_level".to_string(),
+        "8".to_string(),
+        "-y".to_string(),
+        output.to_string(),
+    ]);
+
     let status = Command::new("ffmpeg")
-        .args([
-            "-i", input,
-            "-compression_level", "8",
-            "-y",
-            output,
-        ])
+        .args(args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()?;
@@ -222,9 +333,18 @@ fn convert_to_flac(input: &str, output: &str) -> anyhow::Result<()> {
 }
 
 fn convert_all_to_flac(app: &App) -> anyhow::Result<()> {
-    for file in &app.available_files {
+    for (index, file) in app.available_files.iter().enumerate() {
         let output = format!("{}.flac", file.trim_end_matches(".wav"));
-        convert_to_flac(file, &output)?;
+        let metadata = &app.metadata[index];
+        convert_to_flac(file, &output, metadata.trim_from, metadata.trim_to)?;
+    }
+    Ok(())
+}
+
+fn write_all_metadata(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    for (index, file) in app.available_files.iter().enumerate() {
+        let path = format!("{}.flac", file.trim_end_matches(".wav"));
+        write_metadata_to_file(&path, &app.metadata[index])?;
     }
     Ok(())
 }
@@ -281,4 +401,8 @@ fn extract_waveform(file_path: &str, num_points: usize) -> Result<Vec<u64>, Box<
     }
     
     Ok(waveform)
+}
+
+fn format_duration_for_ffmpeg(duration: Duration) -> String {
+    format!("{:.3}", duration.as_secs_f64())
 }

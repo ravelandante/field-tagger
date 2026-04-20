@@ -1,7 +1,7 @@
-use crate::app::{App, AppState};
+use crate::app::{App, AppState, InteractionMode, TrimSide};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders, Gauge, Paragraph, Chart, Dataset, Axis, GraphType},
+    widgets::{Axis, Block, Borders, Chart, Dataset, Gauge, GraphType, Paragraph, Wrap},
     style::{Color, Style, Modifier},
     symbols,
     text::Span,
@@ -15,6 +15,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
         return;
     }
 
+    let input_height = if app.interaction_mode == InteractionMode::Trim { 6 } else { 3 };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
@@ -22,8 +23,8 @@ pub fn ui(f: &mut Frame<>, app: &App) {
             Constraint::Length(2),  // file info
             Constraint::Length(3),  // progress bar
             Constraint::Length(12), // waveform
-            Constraint::Length(3),  // input
-            Constraint::Min(3),     // instructions
+            Constraint::Length(input_height), // input / trim
+            Constraint::Min(3),  // controls (adaptive height)
         ])
         .split(f.area());
 
@@ -103,19 +104,56 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     
     f.render_widget(waveform_chart, chunks[2]);
 
-    // input
-    let input_title = match app.state {
-        AppState::AskingForTags => "Enter Tags",
-        AppState::AskingForLocation => "Enter Location",
-        _ => "",
-    };
+    if app.interaction_mode == InteractionMode::Trim {
+        let file_metadata = &app.metadata[app.current_file_index];
+        let active_side = match app.active_trim_side {
+            TrimSide::From => "From",
+            TrimSide::To => "To",
+        };
+        let warning_line = app.trim_warning.clone().unwrap_or_default();
+        let trim_panel = Paragraph::new(format!(
+            "From: {}\nTo: {}\nActive Side: {}\nPlayback: {}\n{}",
+            format_duration(file_metadata.trim_from),
+            format_duration(file_metadata.trim_to),
+            active_side,
+            if app.is_paused { "Paused" } else { "Playing" },
+            warning_line
+        ))
+        .block(Block::default().borders(Borders::ALL).title("Trim"));
+        f.render_widget(trim_panel, chunks[3]);
+    } else {
+        // input
+        let input_title = match app.state {
+            AppState::AskingForTags => "Enter Tags",
+            AppState::AskingForLocation => "Enter Location",
+            _ => "",
+        };
 
-    let input_panel = Paragraph::new(app.input.as_str())
-        .block(Block::default().borders(Borders::ALL).title(input_title));
-    f.render_widget(input_panel, chunks[3]);
+        let input_panel = Paragraph::new(app.input.as_str())
+            .block(Block::default().borders(Borders::ALL).title(input_title));
+        f.render_widget(input_panel, chunks[3]);
+    }
 
     // instructions
-    let help_text = Paragraph::new("ESC: Quit | Enter: Save & Next | Arrows: Seek | Del: Delete File")
-        .block(Block::default().borders(Borders::ALL).title("Controls"));
+    let controls = if app.interaction_mode == InteractionMode::Trim {
+        "F6: Back To Normal | Space: Play/Pause | Arrows: Seek | T: Switch Side | Enter: Set Trim"
+    } else {
+        "ESC: Quit | F6: Trim Mode | Enter: Save & Next | Arrows: Seek | Del: Delete File"
+    };
+    let help_text = Paragraph::new(controls)
+        .block(Block::default().borders(Borders::ALL).title("Controls"))
+        .wrap(Wrap { trim: true });
     f.render_widget(help_text, chunks[4]);
+}
+
+fn format_duration(duration: Option<std::time::Duration>) -> String {
+    match duration {
+        Some(value) => format!(
+            "{:02}:{:02}.{:03}",
+            value.as_secs() / 60,
+            value.as_secs() % 60,
+            value.subsec_millis()
+        ),
+        None => "--:--.---".to_string(),
+    }
 }
