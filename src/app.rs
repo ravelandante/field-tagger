@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct App {
     pub input: String,
@@ -15,6 +15,9 @@ pub struct App {
     pub active_trim_side: TrimSide,
     pub trim_warning: Option<String>,
     pub is_paused: bool,
+    pub seek_repeat_count: u32,
+    pub last_seek_direction: i8,
+    pub last_seek_at: Option<Instant>,
 }
 
 #[derive(Clone)]

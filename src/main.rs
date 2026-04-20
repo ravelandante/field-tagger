@@ -9,7 +9,7 @@ use ratatui::{
     Terminal,
 };
 use rodio::{Decoder, OutputStream, Sink, Source};
-use std::{fs::File, io, io::BufReader, time::Duration};
+use std::{fs::File, io, io::BufReader, time::{Duration, Instant}};
 use walkdir::WalkDir;
 use std::process::Command;
 use lofty::{config::{ParseOptions, WriteOptions}, ogg::VorbisComments, prelude::*};
@@ -71,6 +71,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         active_trim_side: TrimSide::From,
         trim_warning: None,
         is_paused: false,
+        seek_repeat_count: 0,
+        last_seek_direction: 0,
+        last_seek_at: None,
     };
     
     sink.append(source);
@@ -112,13 +115,26 @@ fn handle_key_event(
     }
 
     match key.code {
-        KeyCode::Esc => app.should_quit = true,
-        KeyCode::Enter => handle_enter_key(sink, app, terminal)?,
-        KeyCode::Delete => delete_file(sink, app)?,
-        KeyCode::Right => seek_by(sink, app, 5_000)?,
-        KeyCode::Left => seek_by(sink, app, -5_000)?,
-        KeyCode::Char(' ') if app.interaction_mode == InteractionMode::Trim => toggle_pause(sink, app),
+        KeyCode::Esc => {
+            reset_seek_acceleration(app);
+            app.should_quit = true;
+        }
+        KeyCode::Enter => {
+            reset_seek_acceleration(app);
+            handle_enter_key(sink, app, terminal)?;
+        }
+        KeyCode::Delete => {
+            reset_seek_acceleration(app);
+            delete_file(sink, app)?;
+        }
+        KeyCode::Right => seek_with_acceleration(sink, app, 1)?,
+        KeyCode::Left => seek_with_acceleration(sink, app, -1)?,
+        KeyCode::Char(' ') if app.interaction_mode == InteractionMode::Trim => {
+            reset_seek_acceleration(app);
+            toggle_pause(sink, app)
+        }
         KeyCode::Char('t') | KeyCode::Char('T') if app.interaction_mode == InteractionMode::Trim => {
+            reset_seek_acceleration(app);
             app.active_trim_side = match app.active_trim_side {
                 TrimSide::From => TrimSide::To,
                 TrimSide::To => TrimSide::From,
@@ -126,12 +142,14 @@ fn handle_key_event(
             app.trim_warning = None;
         }
         KeyCode::Backspace if app.interaction_mode == InteractionMode::Normal => {
+            reset_seek_acceleration(app);
             app.input.pop();
         }
         KeyCode::Char(c) if app.interaction_mode == InteractionMode::Normal => {
+            reset_seek_acceleration(app);
             app.input.push(c);
         }
-        _ => {}
+        _ => reset_seek_acceleration(app),
     }
 
     Ok(())
@@ -174,6 +192,43 @@ fn seek_by(
     let target_ms = (current_ms + delta_ms).clamp(start_bound, end_bound) as u64;
     sink.try_seek(Duration::from_millis(target_ms))?;
     Ok(())
+}
+
+fn seek_with_acceleration(
+    sink: &Sink,
+    app: &mut App,
+    direction: i8,
+) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let now = Instant::now();
+    let is_continuing_hold = app.last_seek_direction == direction
+        && app
+            .last_seek_at
+            .map(|last| now.duration_since(last) <= Duration::from_millis(250))
+            .unwrap_or(false);
+
+    if is_continuing_hold {
+        app.seek_repeat_count = app.seek_repeat_count.saturating_add(1);
+    } else {
+        app.seek_repeat_count = 0;
+    }
+
+    app.last_seek_direction = direction;
+    app.last_seek_at = Some(now);
+
+    let step_ms = match app.seek_repeat_count {
+        0..=2 => 500,
+        3..=6 => 1_500,
+        7..=12 => 3_000,
+        _ => 5_000,
+    };
+
+    seek_by(sink, app, i64::from(direction) * step_ms)
+}
+
+fn reset_seek_acceleration(app: &mut App) {
+    app.seek_repeat_count = 0;
+    app.last_seek_direction = 0;
+    app.last_seek_at = None;
 }
 
 fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), Box<dyn std::error::Error + 'static>> {
@@ -287,6 +342,7 @@ fn play_next_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::
     app.active_trim_side = TrimSide::From;
     app.trim_warning = None;
     app.is_paused = false;
+    reset_seek_acceleration(app);
     sink.append(next_source);
     Ok(())
 }
