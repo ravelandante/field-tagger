@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         current_file_index: 0,
         should_quit: false,
         available_files,
-        state: app::AppState::AskingForLocation,
+        state: app::AppState::EditingMetadata,
         active_input_field: InputField::Location,
         waveform_data,
         interaction_mode: InteractionMode::Normal,
@@ -256,46 +256,40 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
         return set_active_trim_marker(app);
     }
 
-    Ok(match app.state {
-        app::AppState::AskingForLocation => {
-            app.state = app::AppState::AskingForTags;
-            app.active_input_field = InputField::Tags;
-        }
-        app::AppState::AskingForTags => {
-            app.state = app::AppState::Processing;
-            // conversion below blocks update, so update state + ui explicitly before blocking work
-            terminal.draw(|f| ui(f, app))?;
-            let location = app.location_input.trim().to_string();
-            app.metadata[app.current_file_index].location = if location.is_empty() {
-                None
-            } else {
-                Some(location)
-            };
-            
-            app.metadata[app.current_file_index].tags.extend(
-                app.tags_input
-                .split(',')
-                .map(|tag| tag.trim().to_string())
-                .filter(|tag| !tag.is_empty())
-            );
-        
-            app.current_file_index += 1;
-            if app.current_file_index >= app.available_files.len() {
-                sink.stop();
+    app.state = app::AppState::Processing;
+    // conversion below blocks update, so update state + ui explicitly before blocking work
+    terminal.draw(|f| ui(f, app))?;
 
-                convert_all_to_flac(&app)?;
-                write_all_metadata(app)?;
-                app.should_quit = true;
-            } else {
-                play_next_file(sink, app)?;
-                app.state = app::AppState::AskingForLocation;
-            }
-            app.location_input.clear();
-            app.tags_input.clear();
-            app.active_input_field = InputField::Location;
-        }
-        _ => {}
-    })
+    let location = app.location_input.trim().to_string();
+    app.metadata[app.current_file_index].location = if location.is_empty() {
+        None
+    } else {
+        Some(location)
+    };
+    
+    app.metadata[app.current_file_index].tags.extend(
+        app.tags_input
+            .split(',')
+            .map(|tag| tag.trim().to_string())
+            .filter(|tag| !tag.is_empty())
+    );
+
+    app.current_file_index += 1;
+    if app.current_file_index >= app.available_files.len() {
+        sink.stop();
+
+        convert_all_to_flac(&app)?;
+        write_all_metadata(app)?;
+        app.should_quit = true;
+    } else {
+        play_next_file(sink, app)?;
+        app.state = app::AppState::EditingMetadata;
+    }
+    app.location_input.clear();
+    app.tags_input.clear();
+    app.active_input_field = InputField::Location;
+
+    Ok(())
 }
 
 fn set_active_trim_marker(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {

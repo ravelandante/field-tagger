@@ -37,8 +37,7 @@ pub struct FileMetadata {
 }
 
 pub enum AppState {
-    AskingForTags,
-    AskingForLocation,
+    EditingMetadata,
     Processing,
 }
 
