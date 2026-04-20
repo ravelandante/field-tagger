@@ -332,7 +332,7 @@ fn clear_active_trim_marker(app: &mut App) {
 }
 
 fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
-    sink.stop();
+    sink.clear();
     std::fs::remove_file(&*app.available_files[app.current_file_index])?;
     app.available_files.remove(app.current_file_index);
     app.metadata.remove(app.current_file_index);
@@ -366,7 +366,7 @@ fn get_wav_files_in_current_directory() -> Vec<String> {
 }
 
 fn play_next_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
-    sink.stop();
+    sink.clear();
     let next_file = File::open(&*app.available_files[app.current_file_index])?;
     let next_source = Decoder::new(BufReader::new(next_file))?;
     app.total_duration = next_source.total_duration().unwrap_or(Duration::from_secs(0));
@@ -379,6 +379,7 @@ fn play_next_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::
     app.is_paused = false;
     reset_seek_acceleration(app);
     sink.append(next_source);
+    sink.play();
     Ok(())
 }
 
