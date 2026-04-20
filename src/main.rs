@@ -1,4 +1,4 @@
-use app::{App, InteractionMode, TrimSide};
+use app::{App, InputField, InteractionMode, TrimSide};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
     execute,
@@ -58,7 +58,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut app = App {
         metadata,
-        input: String::new(),
+        location_input: String::new(),
+        tags_input: String::new(),
         total_duration: duration,
         current_duration: Duration::from_secs(0),
         progress: 0.0,
@@ -66,6 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         should_quit: false,
         available_files,
         state: app::AppState::AskingForLocation,
+        active_input_field: InputField::Location,
         waveform_data,
         interaction_mode: InteractionMode::Normal,
         active_trim_side: TrimSide::From,
@@ -123,12 +125,19 @@ fn handle_key_event(
             reset_seek_acceleration(app);
             handle_enter_key(sink, app, terminal)?;
         }
-        KeyCode::Backspace => {
+        KeyCode::Delete => {
             reset_seek_acceleration(app);
             delete_file(sink, app)?;
         }
         KeyCode::Right => seek_with_acceleration(sink, app, 1)?,
         KeyCode::Left => seek_with_acceleration(sink, app, -1)?,
+        KeyCode::Up | KeyCode::Down if app.interaction_mode == InteractionMode::Normal => {
+            reset_seek_acceleration(app);
+            app.active_input_field = match app.active_input_field {
+                InputField::Location => InputField::Tags,
+                InputField::Tags => InputField::Location,
+            };
+        }
         KeyCode::Char(' ') if app.interaction_mode == InteractionMode::Trim => {
             reset_seek_acceleration(app);
             toggle_pause(sink, app)
@@ -147,11 +156,18 @@ fn handle_key_event(
         }
         KeyCode::Backspace if app.interaction_mode == InteractionMode::Normal => {
             reset_seek_acceleration(app);
-            app.input.pop();
+            active_input_buffer_mut(app).pop();
         }
         KeyCode::Char(c) if app.interaction_mode == InteractionMode::Normal => {
             reset_seek_acceleration(app);
-            app.input.push(c);
+            active_input_buffer_mut(app).push(c);
+        }
+        KeyCode::Tab if app.interaction_mode == InteractionMode::Normal => {
+            reset_seek_acceleration(app);
+            app.active_input_field = match app.active_input_field {
+                InputField::Location => InputField::Tags,
+                InputField::Tags => InputField::Location,
+            };
         }
         _ => reset_seek_acceleration(app),
     }
@@ -243,16 +259,22 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
     Ok(match app.state {
         app::AppState::AskingForLocation => {
             app.state = app::AppState::AskingForTags;
-            app.metadata[app.current_file_index].location = Some(app.input.trim().to_string());
-            app.input.clear();
+            app.active_input_field = InputField::Tags;
         }
         app::AppState::AskingForTags => {
             app.state = app::AppState::Processing;
             // conversion below blocks update, so update state + ui explicitly before blocking work
             terminal.draw(|f| ui(f, app))?;
+            let location = app.location_input.trim().to_string();
+            app.metadata[app.current_file_index].location = if location.is_empty() {
+                None
+            } else {
+                Some(location)
+            };
             
             app.metadata[app.current_file_index].tags.extend(
-                app.input.split(',')
+                app.tags_input
+                .split(',')
                 .map(|tag| tag.trim().to_string())
                 .filter(|tag| !tag.is_empty())
             );
@@ -268,7 +290,9 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
                 play_next_file(sink, app)?;
                 app.state = app::AppState::AskingForLocation;
             }
-            app.input.clear();
+            app.location_input.clear();
+            app.tags_input.clear();
+            app.active_input_field = InputField::Location;
         }
         _ => {}
     })
@@ -323,7 +347,9 @@ fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Err
         app.should_quit = true;
     } else {
         play_next_file(sink, app)?;
-        app.input.clear();
+        app.location_input.clear();
+        app.tags_input.clear();
+        app.active_input_field = InputField::Location;
     }
 
     Ok(())
@@ -354,6 +380,7 @@ fn play_next_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::
     app.current_duration = Duration::from_secs(0);
     app.interaction_mode = InteractionMode::Normal;
     app.active_trim_side = TrimSide::From;
+    app.active_input_field = InputField::Location;
     app.trim_warning = None;
     app.is_paused = false;
     reset_seek_acceleration(app);
@@ -519,4 +546,11 @@ fn enforce_playback_bounds(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std
     }
 
     Ok(())
+}
+
+fn active_input_buffer_mut(app: &mut App) -> &mut String {
+    match app.active_input_field {
+        InputField::Location => &mut app.location_input,
+        InputField::Tags => &mut app.tags_input,
+    }
 }

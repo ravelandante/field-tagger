@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 
 pub struct App {
-    pub input: String,
+    pub location_input: String,
+    pub tags_input: String,
     pub total_duration: Duration,
     pub current_duration: Duration,
     pub progress: f64,
@@ -10,6 +11,7 @@ pub struct App {
     pub available_files: Vec<String>,
     pub metadata: Vec<FileMetadata>,
     pub state: AppState,
+    pub active_input_field: InputField,
     pub waveform_data: Vec<u64>,
     pub interaction_mode: InteractionMode,
     pub active_trim_side: TrimSide,
@@ -18,6 +20,12 @@ pub struct App {
     pub seek_repeat_count: u32,
     pub last_seek_direction: i8,
     pub last_seek_at: Option<Instant>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum InputField {
+    Location,
+    Tags,
 }
 
 #[derive(Clone)]

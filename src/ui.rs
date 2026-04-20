@@ -1,4 +1,4 @@
-use crate::app::{App, AppState, InteractionMode, TrimSide};
+use crate::app::{App, AppState, InputField, InteractionMode, TrimSide};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Axis, Block, Borders, Chart, Dataset, Gauge, GraphType, Paragraph, Wrap},
@@ -15,7 +15,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
         return;
     }
 
-    let input_height = if app.interaction_mode == InteractionMode::Trim { 6 } else { 3 };
+    let input_height = 6;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
@@ -164,23 +164,42 @@ pub fn ui(f: &mut Frame<>, app: &App) {
         .block(Block::default().borders(Borders::ALL).title("Trim"));
         f.render_widget(trim_panel, chunks[3]);
     } else {
-        // input
-        let input_title = match app.state {
-            AppState::AskingForTags => "Enter Tags (comma separated)",
-            AppState::AskingForLocation => "Enter Location",
-            _ => "",
+        let input_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Length(3)])
+            .split(chunks[3]);
+
+        let location_block = if app.active_input_field == InputField::Location {
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Location")
+                .border_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        } else {
+            Block::default().borders(Borders::ALL).title("Location")
         };
 
-        let input_panel = Paragraph::new(app.input.as_str())
-            .block(Block::default().borders(Borders::ALL).title(input_title));
-        f.render_widget(input_panel, chunks[3]);
+        let tags_block = if app.active_input_field == InputField::Tags {
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Tags (comma separated)")
+                .border_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        } else {
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Tags (comma separated)")
+        };
+
+        let location_panel = Paragraph::new(app.location_input.as_str()).block(location_block);
+        let tags_panel = Paragraph::new(app.tags_input.as_str()).block(tags_block);
+        f.render_widget(location_panel, input_chunks[0]);
+        f.render_widget(tags_panel, input_chunks[1]);
     }
 
     // instructions
     let controls = if app.interaction_mode == InteractionMode::Trim {
         "ESC: Quit | F6: Tag Mode | Arrows: Seek | Space: Play/Pause | T: Switch Side | Enter: Set Trim | Backspace: Clear Side"
     } else {
-        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Save & Next | Backspace: Delete File"
+        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Tab: Switch Input | Enter: Continue/Save | Backspace: Delete Char | Del: Delete File"
     };
     let help_text = Paragraph::new(controls)
         .block(Block::default().borders(Borders::ALL).title("Controls"))
