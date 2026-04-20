@@ -79,6 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         terminal.draw(|f| ui(f, &app))?;
 
         app.current_duration = sink.get_pos();
+        enforce_playback_bounds(&sink, &mut app)?;
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
@@ -168,8 +169,9 @@ fn seek_by(
     app: &App,
     delta_ms: i64,
 ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let (start_bound, end_bound) = playback_bounds(app);
     let current_ms = app.current_duration.as_millis() as i64;
-    let target_ms = (current_ms + delta_ms).clamp(0, app.total_duration.as_millis() as i64) as u64;
+    let target_ms = (current_ms + delta_ms).clamp(start_bound, end_bound) as u64;
     sink.try_seek(Duration::from_millis(target_ms))?;
     Ok(())
 }
@@ -405,4 +407,46 @@ fn extract_waveform(file_path: &str, num_points: usize) -> Result<Vec<u64>, Box<
 
 fn format_duration_for_ffmpeg(duration: Duration) -> String {
     format!("{:.3}", duration.as_secs_f64())
+}
+
+fn playback_bounds(app: &App) -> (i64, i64) {
+    let metadata = &app.metadata[app.current_file_index];
+    let total_ms = app.total_duration.as_millis() as i64;
+    let start_ms = metadata
+        .trim_from
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+        .clamp(0, total_ms);
+    let end_ms = metadata
+        .trim_to
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(total_ms)
+        .clamp(0, total_ms);
+
+    if start_ms <= end_ms {
+        (start_ms, end_ms)
+    } else {
+        // Defensive fallback; normal trim entry rules should prevent this.
+        (end_ms, start_ms)
+    }
+}
+
+fn enforce_playback_bounds(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let (start_bound, end_bound) = playback_bounds(app);
+    let current_ms = app.current_duration.as_millis() as i64;
+
+    if current_ms < start_bound {
+        sink.try_seek(Duration::from_millis(start_bound as u64))?;
+        app.current_duration = Duration::from_millis(start_bound as u64);
+        return Ok(());
+    }
+
+    if current_ms > end_bound {
+        sink.try_seek(Duration::from_millis(end_bound as u64))?;
+        sink.pause();
+        app.is_paused = true;
+        app.current_duration = Duration::from_millis(end_bound as u64);
+    }
+
+    Ok(())
 }
