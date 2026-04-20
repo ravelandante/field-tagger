@@ -166,7 +166,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     } else {
         // input
         let input_title = match app.state {
-            AppState::AskingForTags => "Enter Tags",
+            AppState::AskingForTags => "Enter Tags (comma separated)",
             AppState::AskingForLocation => "Enter Location",
             _ => "",
         };
