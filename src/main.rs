@@ -123,7 +123,7 @@ fn handle_key_event(
             reset_seek_acceleration(app);
             handle_enter_key(sink, app, terminal)?;
         }
-        KeyCode::Delete => {
+        KeyCode::Backspace => {
             reset_seek_acceleration(app);
             delete_file(sink, app)?;
         }

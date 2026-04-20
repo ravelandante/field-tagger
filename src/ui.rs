@@ -180,7 +180,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     let controls = if app.interaction_mode == InteractionMode::Trim {
         "ESC: Quit | F6: Tag Mode | Arrows: Seek | Space: Play/Pause | T: Switch Side | Enter: Set Trim | Backspace: Clear Side"
     } else {
-        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Save & Next | Del: Delete File"
+        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Save & Next | Backspace: Delete File"
     };
     let help_text = Paragraph::new(controls)
         .block(Block::default().borders(Borders::ALL).title("Controls"))
