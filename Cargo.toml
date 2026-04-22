@@ -2,6 +2,7 @@
 name = "field-tagger"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/ravelandante/field-tagger"
 
 [dependencies]
 # UI and Terminal handling
@@ -19,3 +20,8 @@ lofty = "0.22.4"
 walkdir = "2.4"      # To easily recurse through audio folders
 anyhow = "1.0"       # For easy error handling
 chrono = "0.4"       # For handling dates/times
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
