@@ -42,6 +42,7 @@ pub fn save_current_file_inputs(app: &mut App) {
     app.metadata[app.current_file_index].location = if location.is_empty() {
         None
     } else {
+        add_location_suggestion(app, &location);
         Some(location)
     };
 
@@ -51,6 +52,16 @@ pub fn save_current_file_inputs(app: &mut App) {
             .map(|tag| tag.trim().to_string())
             .filter(|tag| !tag.is_empty()),
     );
+}
+
+fn add_location_suggestion(app: &mut App, location: &str) {
+    let exists = app
+        .location_suggestions
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(location));
+    if !exists {
+        app.location_suggestions.push(location.to_string());
+    }
 }
 
 pub fn process_all_files(

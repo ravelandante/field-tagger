@@ -74,14 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         keep_original_files: true,
         review_selected_option: ReviewOption::AutoComputeFilename,
         processing_end_index: None,
-        location_suggestions: vec![
-            "Forest Trail".to_string(),
-            "City Park".to_string(),
-            "Riverbank".to_string(),
-            "Train Station".to_string(),
-            "Market Square".to_string(),
-            "Beachfront".to_string(),
-        ],
+        location_suggestions: Vec::new(),
         location_dropdown_index: 0,
     };
     
