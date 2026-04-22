@@ -53,6 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             location: None,
             trim_from: None,
             trim_to: None,
+            marked_for_deletion: false,
         })
         .collect();
 
@@ -323,7 +324,9 @@ fn process_all_files(
     terminal.draw(|f| ui(f, app))?;
     convert_all_to_flac(app, app.auto_compute_filename)?;
     write_all_metadata(app, app.auto_compute_filename)?;
-    if !app.keep_original_files {
+    if app.keep_original_files {
+        remove_marked_wav_files(app)?;
+    } else {
         remove_original_wav_files(app)?;
     }
     app.should_quit = true;
@@ -370,15 +373,15 @@ fn clear_active_trim_marker(app: &mut App) {
 }
 
 fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
-    sink.clear();
-    std::fs::remove_file(&*app.available_files[app.current_file_index])?;
-    app.available_files.remove(app.current_file_index);
-    app.metadata.remove(app.current_file_index);
+    app.metadata[app.current_file_index].marked_for_deletion = true;
 
-    if app.current_file_index >= app.available_files.len() {
-        app.should_quit = true;
+    if app.current_file_index + 1 >= app.available_files.len() {
+        sink.stop();
+        app.state = app::AppState::ReviewOutputNaming;
     } else {
+        app.current_file_index += 1;
         play_next_file(sink, app)?;
+        app.state = app::AppState::EditingMetadata;
         app.location_input.clear();
         app.tags_input.clear();
         app.active_input_field = InputField::Location;
@@ -466,6 +469,9 @@ fn convert_to_flac(input: &str, output: &str, trim_from: Option<Duration>, trim_
 
 fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result<()> {
     for (index, file) in app.available_files.iter().enumerate() {
+        if app.metadata[index].marked_for_deletion {
+            continue;
+        }
         let output = flac_output_path(file, &app.metadata[index], auto_compute_filename);
         let metadata = &app.metadata[index];
         convert_to_flac(file, output.as_str(), metadata.trim_from, metadata.trim_to)?;
@@ -475,6 +481,9 @@ fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result
 
 fn write_all_metadata(app: &App, auto_compute_filename: bool) -> Result<(), Box<dyn std::error::Error + 'static>> {
     for (index, file) in app.available_files.iter().enumerate() {
+        if app.metadata[index].marked_for_deletion {
+            continue;
+        }
         let path = flac_output_path(file, &app.metadata[index], auto_compute_filename);
         write_metadata_to_file(path.as_str(), &app.metadata[index])?;
     }
@@ -529,6 +538,15 @@ fn original_flac_output_path(input_wav_path: &str) -> String {
 fn remove_original_wav_files(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     for file in &app.available_files {
         std::fs::remove_file(file)?;
+    }
+    Ok(())
+}
+
+fn remove_marked_wav_files(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    for (index, file) in app.available_files.iter().enumerate() {
+        if app.metadata[index].marked_for_deletion {
+            std::fs::remove_file(file)?;
+        }
     }
     Ok(())
 }

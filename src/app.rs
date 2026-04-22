@@ -37,6 +37,7 @@ pub struct FileMetadata {
     pub location: Option<String>,
     pub trim_from: Option<Duration>,
     pub trim_to: Option<Duration>,
+    pub marked_for_deletion: bool,
 }
 
 pub enum AppState {
