@@ -76,6 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         seek_repeat_count: 0,
         last_seek_direction: 0,
         last_seek_at: None,
+        auto_compute_filename: true,
     };
     
     sink.append(source);
@@ -111,19 +112,30 @@ fn handle_key_event(
     app: &mut App,
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
 ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    if matches!(key.code, KeyCode::Esc) {
+        reset_seek_acceleration(app);
+        app.should_quit = true;
+        return Ok(());
+    }
+
+    if matches!(app.state, app::AppState::ReviewOutputNaming) {
+        match key.code {
+            KeyCode::Char(' ') => app.auto_compute_filename = !app.auto_compute_filename,
+            KeyCode::Enter => process_all_files(sink, app, terminal)?,
+            _ => {}
+        }
+        return Ok(());
+    }
+
     if matches!(key.code, KeyCode::F(6)) {
         toggle_interaction_mode(sink, app);
         return Ok(());
     }
 
     match key.code {
-        KeyCode::Esc => {
-            reset_seek_acceleration(app);
-            app.should_quit = true;
-        }
         KeyCode::Enter => {
             reset_seek_acceleration(app);
-            handle_enter_key(sink, app, terminal)?;
+            handle_enter_key(sink, app)?;
         }
         KeyCode::Delete => {
             reset_seek_acceleration(app);
@@ -251,14 +263,10 @@ fn reset_seek_acceleration(app: &mut App) {
     app.last_seek_at = None;
 }
 
-fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), Box<dyn std::error::Error + 'static>> {
+fn handle_enter_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     if app.interaction_mode == InteractionMode::Trim {
         return set_active_trim_marker(app);
     }
-
-    app.state = app::AppState::Processing;
-    // conversion below blocks update, so update state + ui explicitly before blocking work
-    terminal.draw(|f| ui(f, app))?;
 
     let location = app.location_input.trim().to_string();
     app.metadata[app.current_file_index].location = if location.is_empty() {
@@ -274,14 +282,11 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
             .filter(|tag| !tag.is_empty())
     );
 
-    app.current_file_index += 1;
-    if app.current_file_index >= app.available_files.len() {
+    if app.current_file_index + 1 >= app.available_files.len() {
         sink.stop();
-
-        convert_all_to_flac(&app)?;
-        write_all_metadata(app)?;
-        app.should_quit = true;
+        app.state = app::AppState::ReviewOutputNaming;
     } else {
+        app.current_file_index += 1;
         play_next_file(sink, app)?;
         app.state = app::AppState::EditingMetadata;
     }
@@ -289,6 +294,21 @@ fn handle_enter_key(sink: &Sink, app: &mut App, terminal: &mut Terminal<Crosster
     app.tags_input.clear();
     app.active_input_field = InputField::Location;
 
+    Ok(())
+}
+
+fn process_all_files(
+    sink: &Sink,
+    app: &mut App,
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    sink.stop();
+    app.state = app::AppState::Processing;
+    // conversion below blocks update, so update state + ui explicitly before blocking work
+    terminal.draw(|f| ui(f, app))?;
+    convert_all_to_flac(app, app.auto_compute_filename)?;
+    write_all_metadata(app, app.auto_compute_filename)?;
+    app.should_quit = true;
     Ok(())
 }
 
@@ -426,24 +446,32 @@ fn convert_to_flac(input: &str, output: &str, trim_from: Option<Duration>, trim_
     }
 }
 
-fn convert_all_to_flac(app: &App) -> anyhow::Result<()> {
+fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result<()> {
     for (index, file) in app.available_files.iter().enumerate() {
-        let output = flac_output_path(file, &app.metadata[index]);
+        let output = flac_output_path(file, &app.metadata[index], auto_compute_filename);
         let metadata = &app.metadata[index];
         convert_to_flac(file, output.as_str(), metadata.trim_from, metadata.trim_to)?;
     }
     Ok(())
 }
 
-fn write_all_metadata(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+fn write_all_metadata(app: &App, auto_compute_filename: bool) -> Result<(), Box<dyn std::error::Error + 'static>> {
     for (index, file) in app.available_files.iter().enumerate() {
-        let path = flac_output_path(file, &app.metadata[index]);
+        let path = flac_output_path(file, &app.metadata[index], auto_compute_filename);
         write_metadata_to_file(path.as_str(), &app.metadata[index])?;
     }
     Ok(())
 }
 
-fn flac_output_path(input_wav_path: &str, metadata: &app::FileMetadata) -> String {
+fn flac_output_path(
+    input_wav_path: &str,
+    metadata: &app::FileMetadata,
+    auto_compute_filename: bool,
+) -> String {
+    if !auto_compute_filename {
+        return original_flac_output_path(input_wav_path);
+    }
+
     let location = metadata
         .location
         .as_ref()
@@ -462,6 +490,19 @@ fn flac_output_path(input_wav_path: &str, metadata: &app::FileMetadata) -> Strin
     let file_name = format!("{sanitized_name}.flac");
 
     Path::new(input_wav_path)
+        .parent()
+        .map(|parent| parent.join(&file_name).to_string_lossy().into_owned())
+        .unwrap_or(file_name)
+}
+
+fn original_flac_output_path(input_wav_path: &str) -> String {
+    let input_path = Path::new(input_wav_path);
+    let file_stem = input_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("output");
+    let file_name = format!("{file_stem}.flac");
+    input_path
         .parent()
         .map(|parent| parent.join(&file_name).to_string_lossy().into_owned())
         .unwrap_or(file_name)

@@ -20,6 +20,7 @@ pub struct App {
     pub seek_repeat_count: u32,
     pub last_seek_direction: i8,
     pub last_seek_at: Option<Instant>,
+    pub auto_compute_filename: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub struct FileMetadata {
 
 pub enum AppState {
     EditingMetadata,
+    ReviewOutputNaming,
     Processing,
 }
 

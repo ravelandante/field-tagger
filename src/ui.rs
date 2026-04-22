@@ -15,6 +15,18 @@ pub fn ui(f: &mut Frame<>, app: &App) {
         return;
     }
 
+    if let AppState::ReviewOutputNaming = app.state {
+        let checkbox = if app.auto_compute_filename { "[X]" } else { "[ ]" };
+        let review_panel = Paragraph::new(format!(
+            "All recordings reviewed.\n\n{} Rename files with computed location and tags?\n\nSpace: Toggle checkbox | Enter: Start processing | Esc: Quit",
+            checkbox
+        ))
+        .block(Block::default().borders(Borders::ALL).title("Output Filename Mode"))
+        .wrap(Wrap { trim: true });
+        f.render_widget(review_panel, f.area());
+        return;
+    }
+
     let input_height = 6;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
