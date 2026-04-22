@@ -6,7 +6,7 @@ use lofty::{config::{ParseOptions, WriteOptions}, ogg::VorbisComments, prelude::
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rodio::Sink;
 use std::path::Path;
-use std::{fs::File, io, process::Command, time::Duration};
+use std::{fs, fs::File, io, process::Command, time::Duration};
 use walkdir::WalkDir;
 
 pub fn build_initial_metadata(file_count: usize) -> Vec<app::FileMetadata> {
@@ -35,6 +35,29 @@ pub fn get_wav_files_in_current_directory() -> Vec<String> {
             })
         })
         .collect()
+}
+
+pub fn load_location_suggestions() -> io::Result<Vec<String>> {
+    let path = Path::new("suggestions.txt");
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let contents = fs::read_to_string(path)?;
+    let mut suggestions = Vec::new();
+    for line in contents.lines() {
+        let suggestion = line.trim();
+        if suggestion.is_empty() {
+            continue;
+        }
+        if !suggestions
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(suggestion))
+        {
+            suggestions.push(suggestion.to_string());
+        }
+    }
+    Ok(suggestions)
 }
 
 pub fn save_current_file_inputs(app: &mut App) {
@@ -79,8 +102,19 @@ pub fn process_all_files(
     } else {
         remove_original_wav_files(app)?;
     }
+    persist_location_suggestions(app)?;
     app.should_quit = true;
     Ok(())
+}
+
+fn persist_location_suggestions(app: &App) -> io::Result<()> {
+    if app.location_suggestions.is_empty() {
+        fs::write("suggestions.txt", "")?;
+        return Ok(());
+    }
+    let mut body = app.location_suggestions.join("\n");
+    body.push('\n');
+    fs::write("suggestions.txt", body)
 }
 
 pub fn delete_file(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {

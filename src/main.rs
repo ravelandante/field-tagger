@@ -20,7 +20,7 @@ mod ui;
 
 use audio::{enforce_playback_bounds, extract_waveform};
 use input::handle_key_event;
-use processing::{build_initial_metadata, get_wav_files_in_current_directory};
+use processing::{build_initial_metadata, get_wav_files_in_current_directory, load_location_suggestions};
 use ui::ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,6 +50,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let metadata = build_initial_metadata(available_files.len());
 
+    let location_suggestions = load_location_suggestions().unwrap_or_default();
+
     let mut app = App {
         metadata,
         location_input: String::new(),
@@ -74,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         keep_original_files: true,
         review_selected_option: ReviewOption::AutoComputeFilename,
         processing_end_index: None,
-        location_suggestions: Vec::new(),
+        location_suggestions,
         location_dropdown_index: 0,
     };
     
