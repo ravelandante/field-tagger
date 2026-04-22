@@ -1,4 +1,5 @@
 use crate::app::{App, InputField, InteractionMode, ReviewOption};
+use crate::autocomplete;
 use crate::audio::{
     clear_active_trim_marker, reset_seek_acceleration, seek_with_acceleration, set_active_trim_marker,
     toggle_interaction_mode, toggle_pause,
@@ -53,6 +54,10 @@ pub fn handle_key_event(
     match key.code {
         KeyCode::Enter => {
             reset_seek_acceleration(app);
+            if app.active_input_field == InputField::Location && autocomplete::apply_selection(app) {
+                app.active_input_field = InputField::Tags;
+                return Ok(());
+            }
             handle_enter_key(sink, app)?;
         }
         KeyCode::Delete => {
@@ -61,12 +66,19 @@ pub fn handle_key_event(
         }
         KeyCode::Right => seek_with_acceleration(sink, app, 1)?,
         KeyCode::Left => seek_with_acceleration(sink, app, -1)?,
-        KeyCode::Up | KeyCode::Down if app.interaction_mode == InteractionMode::Normal => {
+        KeyCode::Up if app.interaction_mode == InteractionMode::Normal => {
             reset_seek_acceleration(app);
-            app.active_input_field = match app.active_input_field {
-                InputField::Location => InputField::Tags,
-                InputField::Tags => InputField::Location,
-            };
+            if app.active_input_field == InputField::Location && autocomplete::move_selection(app, -1) {
+                return Ok(());
+            }
+            app.active_input_field = InputField::Location;
+        }
+        KeyCode::Down if app.interaction_mode == InteractionMode::Normal => {
+            reset_seek_acceleration(app);
+            if app.active_input_field == InputField::Location && autocomplete::move_selection(app, 1) {
+                return Ok(());
+            }
+            app.active_input_field = InputField::Tags;
         }
         KeyCode::Char(' ') if app.interaction_mode == InteractionMode::Trim => {
             reset_seek_acceleration(app);
@@ -87,10 +99,16 @@ pub fn handle_key_event(
         KeyCode::Backspace if app.interaction_mode == InteractionMode::Normal => {
             reset_seek_acceleration(app);
             active_input_buffer_mut(app).pop();
+            if app.active_input_field == InputField::Location {
+                autocomplete::reset_selection(app);
+            }
         }
         KeyCode::Char(c) if app.interaction_mode == InteractionMode::Normal => {
             reset_seek_acceleration(app);
             active_input_buffer_mut(app).push(c);
+            if app.active_input_field == InputField::Location {
+                autocomplete::reset_selection(app);
+            }
         }
         KeyCode::Tab if app.interaction_mode == InteractionMode::Normal => {
             reset_seek_acceleration(app);

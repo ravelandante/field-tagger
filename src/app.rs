@@ -24,6 +24,8 @@ pub struct App {
     pub keep_original_files: bool,
     pub review_selected_option: ReviewOption,
     pub processing_end_index: Option<usize>,
+    pub location_suggestions: Vec<String>,
+    pub location_dropdown_index: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

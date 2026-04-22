@@ -1,4 +1,5 @@
 use crate::app::{App, AppState, InputField, InteractionMode, ReviewOption, TrimSide};
+use crate::autocomplete::{render_location_autocomplete, render_location_dropdown_overlay};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Axis, Block, Borders, Chart, Dataset, Gauge, GraphType, Paragraph, Wrap},
@@ -173,6 +174,8 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     
     f.render_widget(waveform_chart, chunks[2]);
 
+    let mut location_area = None;
+
     if app.interaction_mode == InteractionMode::Trim {
         let active_side = match app.active_trim_side {
             TrimSide::From => "From",
@@ -195,15 +198,6 @@ pub fn ui(f: &mut Frame<>, app: &App) {
             .constraints([Constraint::Length(3), Constraint::Length(3)])
             .split(chunks[3]);
 
-        let location_block = if app.active_input_field == InputField::Location {
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Location")
-                .border_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-        } else {
-            Block::default().borders(Borders::ALL).title("Location")
-        };
-
         let tags_block = if app.active_input_field == InputField::Tags {
             Block::default()
                 .borders(Borders::ALL)
@@ -215,9 +209,9 @@ pub fn ui(f: &mut Frame<>, app: &App) {
                 .title("Tags (comma separated)")
         };
 
-        let location_panel = Paragraph::new(app.location_input.as_str()).block(location_block);
         let tags_panel = Paragraph::new(app.tags_input.as_str()).block(tags_block);
-        f.render_widget(location_panel, input_chunks[0]);
+        location_area = Some(input_chunks[0]);
+        render_location_autocomplete(f, input_chunks[0], app, app.active_input_field == InputField::Location);
         f.render_widget(tags_panel, input_chunks[1]);
     }
 
@@ -225,12 +219,16 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     let controls = if app.interaction_mode == InteractionMode::Trim {
         "ESC: Quit | F6: Tag Mode | Arrows: Seek | Space: Play/Pause | T: Switch Side | Enter: Set Trim | Backspace: Clear Trim"
     } else {
-        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Next File | Ctrl+Enter: Process To Current | Del: Mark for Deletion"
+        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Select/Next | Ctrl+Enter: Process To Current | Del: Mark for Deletion"
     };
     let help_text = Paragraph::new(controls)
         .block(Block::default().borders(Borders::ALL).title("Controls"))
         .wrap(Wrap { trim: true });
     f.render_widget(help_text, chunks[4]);
+
+    if let Some(area) = location_area {
+        render_location_dropdown_overlay(f, app, area, app.active_input_field == InputField::Location);
+    }
 }
 
 fn format_duration(duration: Option<std::time::Duration>) -> String {
