@@ -89,7 +89,7 @@ pub fn render_location_dropdown_overlay(
     }
 
     let show_count = suggestions.len().min(4);
-    let popup_height = show_count as u16 + 2;
+    let popup_height = show_count as u16 + 1;
     let frame = f.area();
     let preferred_below_y = anchor_area.y.saturating_add(anchor_area.height);
     let render_below = preferred_below_y.saturating_add(popup_height) <= frame.y.saturating_add(frame.height);
