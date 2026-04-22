@@ -29,13 +29,13 @@ pub fn ui(f: &mut Frame<>, app: &App) {
             " "
         };
         let review_panel = Paragraph::new(format!(
-            "All recordings reviewed.\n\n{} Rename files with computed location and tags? {}\n{} Keep original files? {}\n\nSpace: Toggle selected option | Enter: Start processing | Esc: Quit",
+            "{} Rename files with computed location and tags? {}\n{} Keep original files? {}\n\nSpace: Toggle selected option | Enter: Start processing | Esc: Quit",
             filename_checkbox,
             filename_suffix,
             originals_checkbox,
             originals_suffix,
         ))
-        .block(Block::default().borders(Borders::ALL).title("Output Filename Mode"))
+        .block(Block::default().borders(Borders::ALL).title("Output Options"))
         .wrap(Wrap { trim: true });
         f.render_widget(review_panel, f.area());
         return;
@@ -225,7 +225,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     let controls = if app.interaction_mode == InteractionMode::Trim {
         "ESC: Quit | F6: Tag Mode | Arrows: Seek | Space: Play/Pause | T: Switch Side | Enter: Set Trim | Backspace: Clear Trim"
     } else {
-        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Next File | Del: Mark for Deletion"
+        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Next File | Ctrl+Enter: Process To Current | Del: Mark for Deletion"
     };
     let help_text = Paragraph::new(controls)
         .block(Block::default().borders(Borders::ALL).title("Controls"))

@@ -23,6 +23,7 @@ pub struct App {
     pub auto_compute_filename: bool,
     pub keep_original_files: bool,
     pub review_selected_option: ReviewOption,
+    pub processing_end_index: Option<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -80,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         auto_compute_filename: true,
         keep_original_files: true,
         review_selected_option: ReviewOption::AutoComputeFilename,
+        processing_end_index: None,
     };
     
     sink.append(source);
@@ -140,6 +141,12 @@ fn handle_key_event(
             KeyCode::Enter => process_all_files(sink, app, terminal)?,
             _ => {}
         }
+        return Ok(());
+    }
+
+    if key.code == KeyCode::F(5) {
+        reset_seek_acceleration(app);
+        handle_process_to_current_key(sink, app)?;
         return Ok(());
     }
 
@@ -284,22 +291,11 @@ fn handle_enter_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error
         return set_active_trim_marker(app);
     }
 
-    let location = app.location_input.trim().to_string();
-    app.metadata[app.current_file_index].location = if location.is_empty() {
-        None
-    } else {
-        Some(location)
-    };
-    
-    app.metadata[app.current_file_index].tags.extend(
-        app.tags_input
-            .split(',')
-            .map(|tag| tag.trim().to_string())
-            .filter(|tag| !tag.is_empty())
-    );
+    save_current_file_inputs(app);
 
     if app.current_file_index + 1 >= app.available_files.len() {
         sink.stop();
+        app.processing_end_index = Some(app.current_file_index);
         app.state = app::AppState::ReviewOutputNaming;
     } else {
         app.current_file_index += 1;
@@ -311,6 +307,33 @@ fn handle_enter_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error
     app.active_input_field = InputField::Location;
 
     Ok(())
+}
+
+fn handle_process_to_current_key(sink: &Sink, app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    save_current_file_inputs(app);
+    sink.stop();
+    app.processing_end_index = Some(app.current_file_index);
+    app.state = app::AppState::ReviewOutputNaming;
+    app.location_input.clear();
+    app.tags_input.clear();
+    app.active_input_field = InputField::Location;
+    Ok(())
+}
+
+fn save_current_file_inputs(app: &mut App) {
+    let location = app.location_input.trim().to_string();
+    app.metadata[app.current_file_index].location = if location.is_empty() {
+        None
+    } else {
+        Some(location)
+    };
+
+    app.metadata[app.current_file_index].tags.extend(
+        app.tags_input
+            .split(',')
+            .map(|tag| tag.trim().to_string())
+            .filter(|tag| !tag.is_empty()),
+    );
 }
 
 fn process_all_files(
@@ -469,6 +492,9 @@ fn convert_to_flac(input: &str, output: &str, trim_from: Option<Duration>, trim_
 
 fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result<()> {
     for (index, file) in app.available_files.iter().enumerate() {
+        if !is_index_in_processing_range(app, index) {
+            continue;
+        }
         if app.metadata[index].marked_for_deletion {
             continue;
         }
@@ -481,6 +507,9 @@ fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result
 
 fn write_all_metadata(app: &App, auto_compute_filename: bool) -> Result<(), Box<dyn std::error::Error + 'static>> {
     for (index, file) in app.available_files.iter().enumerate() {
+        if !is_index_in_processing_range(app, index) {
+            continue;
+        }
         if app.metadata[index].marked_for_deletion {
             continue;
         }
@@ -536,7 +565,10 @@ fn original_flac_output_path(input_wav_path: &str) -> String {
 }
 
 fn remove_original_wav_files(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
-    for file in &app.available_files {
+    for (index, file) in app.available_files.iter().enumerate() {
+        if !is_index_in_processing_range(app, index) {
+            continue;
+        }
         std::fs::remove_file(file)?;
     }
     Ok(())
@@ -544,11 +576,21 @@ fn remove_original_wav_files(app: &App) -> Result<(), Box<dyn std::error::Error 
 
 fn remove_marked_wav_files(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     for (index, file) in app.available_files.iter().enumerate() {
+        if !is_index_in_processing_range(app, index) {
+            continue;
+        }
         if app.metadata[index].marked_for_deletion {
             std::fs::remove_file(file)?;
         }
     }
     Ok(())
+}
+
+fn is_index_in_processing_range(app: &App, index: usize) -> bool {
+    let end_index = app
+        .processing_end_index
+        .unwrap_or_else(|| app.available_files.len().saturating_sub(1));
+    index <= end_index
 }
 
 fn sanitize_for_filename(input: &str) -> String {
