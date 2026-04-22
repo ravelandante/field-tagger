@@ -9,7 +9,7 @@ use ratatui::{
     Terminal,
 };
 use rodio::{Decoder, OutputStream, Sink, Source};
-use std::{fs::File, io, io::BufReader, time::{Duration, Instant}};
+use std::{fs::File, io, io::BufReader, path::Path, time::{Duration, Instant}};
 use walkdir::WalkDir;
 use std::process::Command;
 use lofty::{config::{ParseOptions, WriteOptions}, ogg::VorbisComments, prelude::*};
@@ -428,19 +428,53 @@ fn convert_to_flac(input: &str, output: &str, trim_from: Option<Duration>, trim_
 
 fn convert_all_to_flac(app: &App) -> anyhow::Result<()> {
     for (index, file) in app.available_files.iter().enumerate() {
-        let output = format!("{}.flac", file.trim_end_matches(".wav"));
+        let output = flac_output_path(file, &app.metadata[index]);
         let metadata = &app.metadata[index];
-        convert_to_flac(file, &output, metadata.trim_from, metadata.trim_to)?;
+        convert_to_flac(file, output.as_str(), metadata.trim_from, metadata.trim_to)?;
     }
     Ok(())
 }
 
 fn write_all_metadata(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     for (index, file) in app.available_files.iter().enumerate() {
-        let path = format!("{}.flac", file.trim_end_matches(".wav"));
-        write_metadata_to_file(&path, &app.metadata[index])?;
+        let path = flac_output_path(file, &app.metadata[index]);
+        write_metadata_to_file(path.as_str(), &app.metadata[index])?;
     }
     Ok(())
+}
+
+fn flac_output_path(input_wav_path: &str, metadata: &app::FileMetadata) -> String {
+    let location = metadata
+        .location
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+
+    let tags = if metadata.tags.is_empty() {
+        "no tags".to_string()
+    } else {
+        metadata.tags.join(" ")
+    };
+
+    let raw_name = format!("{location} {tags}");
+    let sanitized_name = sanitize_for_filename(raw_name.trim());
+    let file_name = format!("{sanitized_name}.flac");
+
+    Path::new(input_wav_path)
+        .parent()
+        .map(|parent| parent.join(&file_name).to_string_lossy().into_owned())
+        .unwrap_or(file_name)
+}
+
+fn sanitize_for_filename(input: &str) -> String {
+    let collapsed = input.split_whitespace().collect::<Vec<_>>().join(" ");
+    let cleaned = collapsed.replace('/', "_");
+    if cleaned.is_empty() {
+        "unknown no tags".to_string()
+    } else {
+        cleaned
+    }
 }
 
 fn write_metadata_to_file(path: &str, metadata: &app::FileMetadata) -> Result<(), Box<dyn std::error::Error + 'static>> {
