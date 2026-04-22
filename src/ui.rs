@@ -223,9 +223,9 @@ pub fn ui(f: &mut Frame<>, app: &App) {
 
     // instructions
     let controls = if app.interaction_mode == InteractionMode::Trim {
-        "ESC: Quit | F6: Tag Mode | Arrows: Seek | Space: Play/Pause | T: Switch Side | Enter: Set Trim | Backspace: Clear Side"
+        "ESC: Quit | F6: Tag Mode | Arrows: Seek | Space: Play/Pause | T: Switch Side | Enter: Set Trim | Backspace: Clear Trim"
     } else {
-        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Continue/Save | Del: Delete File"
+        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Next File | Del: Delete File"
     };
     let help_text = Paragraph::new(controls)
         .block(Block::default().borders(Borders::ALL).title("Controls"))
