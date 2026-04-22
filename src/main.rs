@@ -518,7 +518,6 @@ fn playback_bounds(app: &App) -> (i64, i64) {
     if start_ms <= end_ms {
         (start_ms, end_ms)
     } else {
-        // Defensive fallback; normal trim entry rules should prevent this.
         (end_ms, start_ms)
     }
 }
