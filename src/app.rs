@@ -21,6 +21,8 @@ pub struct App {
     pub last_seek_direction: i8,
     pub last_seek_at: Option<Instant>,
     pub auto_compute_filename: bool,
+    pub keep_original_files: bool,
+    pub review_selected_option: ReviewOption,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -41,6 +43,12 @@ pub enum AppState {
     EditingMetadata,
     ReviewOutputNaming,
     Processing,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ReviewOption {
+    AutoComputeFilename,
+    KeepOriginalFiles,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

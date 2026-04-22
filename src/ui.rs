@@ -1,4 +1,4 @@
-use crate::app::{App, AppState, InputField, InteractionMode, TrimSide};
+use crate::app::{App, AppState, InputField, InteractionMode, ReviewOption, TrimSide};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Axis, Block, Borders, Chart, Dataset, Gauge, GraphType, Paragraph, Wrap},
@@ -16,10 +16,24 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     }
 
     if let AppState::ReviewOutputNaming = app.state {
-        let checkbox = if app.auto_compute_filename { "[X]" } else { "[ ]" };
+        let filename_checkbox = if app.auto_compute_filename { "[X]" } else { "[ ]" };
+        let originals_checkbox = if app.keep_original_files { "[X]" } else { "[ ]" };
+        let filename_suffix = if app.review_selected_option == ReviewOption::AutoComputeFilename {
+            "<"
+        } else {
+            " "
+        };
+        let originals_suffix = if app.review_selected_option == ReviewOption::KeepOriginalFiles {
+            "<"
+        } else {
+            " "
+        };
         let review_panel = Paragraph::new(format!(
-            "All recordings reviewed.\n\n{} Rename files with computed location and tags?\n\nSpace: Toggle checkbox | Enter: Start processing | Esc: Quit",
-            checkbox
+            "All recordings reviewed.\n\n{} Rename files with computed location and tags? {}\n{} Keep original files? {}\n\nSpace: Toggle selected option | Enter: Start processing | Esc: Quit",
+            filename_checkbox,
+            filename_suffix,
+            originals_checkbox,
+            originals_suffix,
         ))
         .block(Block::default().borders(Borders::ALL).title("Output Filename Mode"))
         .wrap(Wrap { trim: true });
@@ -211,7 +225,7 @@ pub fn ui(f: &mut Frame<>, app: &App) {
     let controls = if app.interaction_mode == InteractionMode::Trim {
         "ESC: Quit | F6: Tag Mode | Arrows: Seek | Space: Play/Pause | T: Switch Side | Enter: Set Trim | Backspace: Clear Side"
     } else {
-        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Tab: Switch Input | Enter: Continue/Save | Del: Delete File"
+        "ESC: Quit | F6: Trim Mode | Arrows: Seek | Enter: Continue/Save | Del: Delete File"
     };
     let help_text = Paragraph::new(controls)
         .block(Block::default().borders(Borders::ALL).title("Controls"))

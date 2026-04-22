@@ -1,4 +1,4 @@
-use app::{App, InputField, InteractionMode, TrimSide};
+use app::{App, InputField, InteractionMode, ReviewOption, TrimSide};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
     execute,
@@ -77,6 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_seek_direction: 0,
         last_seek_at: None,
         auto_compute_filename: true,
+        keep_original_files: true,
+        review_selected_option: ReviewOption::AutoComputeFilename,
     };
     
     sink.append(source);
@@ -120,7 +122,20 @@ fn handle_key_event(
 
     if matches!(app.state, app::AppState::ReviewOutputNaming) {
         match key.code {
-            KeyCode::Char(' ') => app.auto_compute_filename = !app.auto_compute_filename,
+            KeyCode::Up | KeyCode::Down | KeyCode::Tab => {
+                app.review_selected_option = match app.review_selected_option {
+                    ReviewOption::AutoComputeFilename => ReviewOption::KeepOriginalFiles,
+                    ReviewOption::KeepOriginalFiles => ReviewOption::AutoComputeFilename,
+                };
+            }
+            KeyCode::Char(' ') => match app.review_selected_option {
+                ReviewOption::AutoComputeFilename => {
+                    app.auto_compute_filename = !app.auto_compute_filename
+                }
+                ReviewOption::KeepOriginalFiles => {
+                    app.keep_original_files = !app.keep_original_files
+                }
+            },
             KeyCode::Enter => process_all_files(sink, app, terminal)?,
             _ => {}
         }
@@ -308,6 +323,9 @@ fn process_all_files(
     terminal.draw(|f| ui(f, app))?;
     convert_all_to_flac(app, app.auto_compute_filename)?;
     write_all_metadata(app, app.auto_compute_filename)?;
+    if !app.keep_original_files {
+        remove_original_wav_files(app)?;
+    }
     app.should_quit = true;
     Ok(())
 }
@@ -506,6 +524,13 @@ fn original_flac_output_path(input_wav_path: &str) -> String {
         .parent()
         .map(|parent| parent.join(&file_name).to_string_lossy().into_owned())
         .unwrap_or(file_name)
+}
+
+fn remove_original_wav_files(app: &App) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    for file in &app.available_files {
+        std::fs::remove_file(file)?;
+    }
+    Ok(())
 }
 
 fn sanitize_for_filename(input: &str) -> String {
