@@ -70,6 +70,25 @@ jobs:
         with:
           name: cargo-dist-cache
           path: ~/.cargo/bin/dist
+      - name: Validate tag matches Cargo.toml version
+        if: ${{ !github.event.pull_request }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag_version="${GITHUB_REF_NAME#v}"
+          manifest_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | sed -n '1p')"
+
+          if [[ -z "${manifest_version}" ]]; then
+            echo "::error::Could not read package version from Cargo.toml"
+            exit 1
+          fi
+
+          if [[ "${tag_version}" != "${manifest_version}" ]]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' does not match Cargo.toml version '${manifest_version}'."
+            echo "::error::Use tag 'v${manifest_version}' for this commit, or bump Cargo.toml version first."
+            exit 1
+          fi
       # sure would be cool if github gave us proper conditionals...
       # so here's a doubly-nested ternary-via-truthiness to try to provide the best possible
       # functionality based on whether this is a pull_request, and whether it's from a fork.
