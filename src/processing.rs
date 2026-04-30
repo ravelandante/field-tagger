@@ -172,7 +172,7 @@ fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result
         if !is_index_in_processing_range(app, index) || app.metadata[index].marked_for_deletion {
             continue;
         }
-        let output = flac_output_path(file, &app.metadata[index], auto_compute_filename);
+        let output = flac_output_path(file, &app.metadata[index], auto_compute_filename, index);
         let metadata = &app.metadata[index];
         convert_to_flac(file, output.as_str(), metadata.trim_from, metadata.trim_to)?;
     }
@@ -184,7 +184,7 @@ fn write_all_metadata(app: &App, auto_compute_filename: bool) -> Result<(), Box<
         if !is_index_in_processing_range(app, index) || app.metadata[index].marked_for_deletion {
             continue;
         }
-        let path = flac_output_path(file, &app.metadata[index], auto_compute_filename);
+        let path = flac_output_path(file, &app.metadata[index], auto_compute_filename, index);
         write_metadata_to_file(path.as_str(), &app.metadata[index])?;
     }
     Ok(())
@@ -194,6 +194,7 @@ fn flac_output_path(
     input_wav_path: &str,
     metadata: &app::FileMetadata,
     auto_compute_filename: bool,
+    index: usize,
 ) -> String {
     if !auto_compute_filename {
         return original_flac_output_path(input_wav_path);
@@ -206,15 +207,26 @@ fn flac_output_path(
         .filter(|value| !value.is_empty())
         .unwrap_or("unknown");
 
-    let tags = if metadata.tags.is_empty() {
+    let tags_missing = metadata.tags.is_empty();
+    let tags = if tags_missing {
         "no tags".to_string()
     } else {
         metadata.tags.join(" ")
     };
+    let location_missing = metadata
+        .location
+        .as_ref()
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    let has_incomplete_naming_fields = location_missing || tags_missing;
 
     let raw_name = format!("{location} {tags}");
     let sanitized_name = sanitize_for_filename(raw_name.trim());
-    let file_name = format!("{sanitized_name}.flac");
+    let file_name = if has_incomplete_naming_fields {
+        format!("{sanitized_name} {}.flac", index + 1)
+    } else {
+        format!("{sanitized_name}.flac")
+    };
 
     Path::new(input_wav_path)
         .parent()
