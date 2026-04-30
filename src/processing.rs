@@ -6,6 +6,7 @@ use lofty::{config::{ParseOptions, WriteOptions}, ogg::VorbisComments, prelude::
 use ratatui::{backend::CrosstermBackend, Terminal};
 use rodio::Sink;
 use std::path::Path;
+use std::collections::{HashMap, HashSet};
 use std::{fs, fs::File, io, process::Command, time::Duration};
 use walkdir::WalkDir;
 
@@ -168,11 +169,18 @@ fn convert_to_flac(input: &str, output: &str, trim_from: Option<Duration>, trim_
 }
 
 fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result<()> {
+    let duplicate_base_names = duplicate_auto_base_names(app);
     for (index, file) in app.available_files.iter().enumerate() {
         if !is_index_in_processing_range(app, index) || app.metadata[index].marked_for_deletion {
             continue;
         }
-        let output = flac_output_path(file, &app.metadata[index], auto_compute_filename, index);
+        let output = flac_output_path(
+            file,
+            &app.metadata[index],
+            auto_compute_filename,
+            index,
+            &duplicate_base_names,
+        );
         let metadata = &app.metadata[index];
         convert_to_flac(file, output.as_str(), metadata.trim_from, metadata.trim_to)?;
     }
@@ -180,11 +188,18 @@ fn convert_all_to_flac(app: &App, auto_compute_filename: bool) -> anyhow::Result
 }
 
 fn write_all_metadata(app: &App, auto_compute_filename: bool) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    let duplicate_base_names = duplicate_auto_base_names(app);
     for (index, file) in app.available_files.iter().enumerate() {
         if !is_index_in_processing_range(app, index) || app.metadata[index].marked_for_deletion {
             continue;
         }
-        let path = flac_output_path(file, &app.metadata[index], auto_compute_filename, index);
+        let path = flac_output_path(
+            file,
+            &app.metadata[index],
+            auto_compute_filename,
+            index,
+            &duplicate_base_names,
+        );
         write_metadata_to_file(path.as_str(), &app.metadata[index])?;
     }
     Ok(())
@@ -195,34 +210,16 @@ fn flac_output_path(
     metadata: &app::FileMetadata,
     auto_compute_filename: bool,
     index: usize,
+    duplicate_base_names: &HashSet<String>,
 ) -> String {
     if !auto_compute_filename {
         return original_flac_output_path(input_wav_path);
     }
 
-    let location = metadata
-        .location
-        .as_ref()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .unwrap_or("unknown");
-
-    let tags_missing = metadata.tags.is_empty();
-    let tags = if tags_missing {
-        "no tags".to_string()
-    } else {
-        metadata.tags.join(" ")
-    };
-    let location_missing = metadata
-        .location
-        .as_ref()
-        .map(|value| value.trim().is_empty())
-        .unwrap_or(true);
-    let has_incomplete_naming_fields = location_missing || tags_missing;
-
-    let raw_name = format!("{location} {tags}");
-    let sanitized_name = sanitize_for_filename(raw_name.trim());
-    let file_name = if has_incomplete_naming_fields {
+    let (sanitized_name, has_incomplete_naming_fields) = computed_base_name(metadata);
+    let has_duplicate_complete_name = !has_incomplete_naming_fields
+        && duplicate_base_names.contains(&sanitized_name.to_lowercase());
+    let file_name = if has_incomplete_naming_fields || has_duplicate_complete_name {
         format!("{sanitized_name} {}.flac", index + 1)
     } else {
         format!("{sanitized_name}.flac")
@@ -232,6 +229,53 @@ fn flac_output_path(
         .parent()
         .map(|parent| parent.join(&file_name).to_string_lossy().into_owned())
         .unwrap_or(file_name)
+}
+
+pub fn duplicate_output_warning(app: &App) -> Option<String> {
+    if !app.auto_compute_filename {
+        return None;
+    }
+
+    let mut grouped: HashMap<String, Vec<String>> = HashMap::new();
+    for (index, input_path) in app.available_files.iter().enumerate() {
+        if !is_index_in_processing_range(app, index) || app.metadata[index].marked_for_deletion {
+            continue;
+        }
+        let (base_name, has_incomplete_naming_fields) = computed_base_name(&app.metadata[index]);
+        if has_incomplete_naming_fields {
+            continue;
+        }
+        let file_label = Path::new(input_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(input_path)
+            .to_string();
+        grouped
+            .entry(base_name.to_lowercase())
+            .or_default()
+            .push(file_label);
+    }
+
+    let mut duplicate_groups: Vec<Vec<String>> = grouped
+        .into_values()
+        .filter(|group| group.len() > 1)
+        .collect();
+    if duplicate_groups.is_empty() {
+        return None;
+    }
+
+    duplicate_groups.sort_by_key(|group| group[0].to_lowercase());
+    let mut lines = vec![String::from(
+        "WARNING: Duplicate location+tag combinations will produce duplicate file names.",
+    )];
+    lines.push(String::from("Conflicting source files:"));
+    for group in duplicate_groups {
+        lines.push(format!("- {}", group.join(", ")));
+    }
+    lines.push(String::from(
+        "If you continue, a unique number will be appended to each conflicting output file name.",
+    ));
+    Some(lines.join("\n"))
 }
 
 fn original_flac_output_path(input_wav_path: &str) -> String {
@@ -284,6 +328,50 @@ fn sanitize_for_filename(input: &str) -> String {
     } else {
         cleaned
     }
+}
+
+fn computed_base_name(metadata: &app::FileMetadata) -> (String, bool) {
+    let location = metadata
+        .location
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+    let tags_missing = metadata.tags.is_empty();
+    let tags = if tags_missing {
+        "no tags".to_string()
+    } else {
+        metadata.tags.join(" ")
+    };
+    let location_missing = metadata
+        .location
+        .as_ref()
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    let has_incomplete_naming_fields = location_missing || tags_missing;
+    let raw_name = format!("{location} {tags}");
+    (
+        sanitize_for_filename(raw_name.trim()),
+        has_incomplete_naming_fields,
+    )
+}
+
+fn duplicate_auto_base_names(app: &App) -> HashSet<String> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for (index, metadata) in app.metadata.iter().enumerate() {
+        if !is_index_in_processing_range(app, index) || metadata.marked_for_deletion {
+            continue;
+        }
+        let (base_name, has_incomplete_naming_fields) = computed_base_name(metadata);
+        if has_incomplete_naming_fields {
+            continue;
+        }
+        *counts.entry(base_name.to_lowercase()).or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        .filter_map(|(name, count)| if count > 1 { Some(name) } else { None })
+        .collect()
 }
 
 fn write_metadata_to_file(path: &str, metadata: &app::FileMetadata) -> Result<(), Box<dyn std::error::Error + 'static>> {

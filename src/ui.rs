@@ -1,5 +1,6 @@
 use crate::app::{App, AppState, InputField, InteractionMode, ReviewOption, TrimSide};
 use crate::autocomplete::{render_location_autocomplete, render_location_dropdown_overlay};
+use crate::processing::duplicate_output_warning;
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Axis, Block, Borders, Chart, Dataset, Gauge, GraphType, Paragraph, Wrap},
@@ -29,12 +30,16 @@ pub fn ui(f: &mut Frame<>, app: &App) {
         } else {
             " "
         };
+        let duplicate_warning = duplicate_output_warning(app)
+            .map(|warning| format!("\n{warning}"))
+            .unwrap_or_default();
         let review_panel = Paragraph::new(format!(
-            "{} Rename files with computed location and tags? {}\n
+            "{} Rename files with computed location and tags? {}\n{}\n
             {} Keep original files? {}\n\n
             Space: Toggle selected option | Enter: Start processing | Esc: Quit",
             filename_checkbox,
             filename_suffix,
+            duplicate_warning,
             originals_checkbox,
             originals_suffix,
         ))
