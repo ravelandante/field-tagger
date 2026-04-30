@@ -30,7 +30,9 @@ pub fn ui(f: &mut Frame<>, app: &App) {
             " "
         };
         let review_panel = Paragraph::new(format!(
-            "{} Rename files with computed location and tags? {}\n{} Keep original files? {}\n\nSpace: Toggle selected option | Enter: Start processing | Esc: Quit",
+            "{} Rename files with computed location and tags? {}\n
+            {} Keep original files? {}\n\n
+            Space: Toggle selected option | Enter: Start processing | Esc: Quit",
             filename_checkbox,
             filename_suffix,
             originals_checkbox,
