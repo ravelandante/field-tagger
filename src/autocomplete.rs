@@ -8,15 +8,15 @@ use ratatui::{
 
 pub fn filtered_location_suggestions(app: &App) -> Vec<String> {
     let query = app.location_input.trim().to_lowercase();
-    let mut filtered: Vec<String> = if query.is_empty() {
-        app.location_suggestions.clone()
-    } else {
-        app.location_suggestions
-            .iter()
-            .filter(|value| value.to_lowercase().contains(&query))
-            .cloned()
-            .collect()
-    };
+    if query.chars().count() != 1 {
+        return Vec::new();
+    }
+    let mut filtered: Vec<String> = app
+        .location_suggestions
+        .iter()
+        .filter(|value| value.to_lowercase().contains(&query))
+        .cloned()
+        .collect();
     filtered.truncate(5);
     filtered
 }
